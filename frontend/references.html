@@ -11,7 +11,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/assets/styles.css" />
-    <script defer src="/assets/app.js"></script>
   </head>
   <body data-page="references">
     <header class="topbar">
@@ -43,7 +42,7 @@
         <article class="doc-block full">
           <h2>Selected models</h2>
           <div class="table-wrap">
-            <table class="data-table compact" id="modelRefTable">
+            <table class="data-table compact">
               <thead>
                 <tr>
                   <th>injector</th>
@@ -55,20 +54,56 @@
                   <th>r2</th>
                 </tr>
               </thead>
-              <tbody></tbody>
+              <tbody>
+                <tr>
+                  <td>800</td>
+                  <td>ET-Transformer</td>
+                  <td>TRM_NO_CURRENT</td>
+                  <td>S2_condition_holdout</td>
+                  <td>0.188</td>
+                  <td>0.036</td>
+                  <td>0.9925</td>
+                </tr>
+                <tr>
+                  <td>417</td>
+                  <td>ET-MLP-BayesReg</td>
+                  <td>B_MLP_BayesReg_scalar</td>
+                  <td>S2_condition_holdout</td>
+                  <td>0.1158</td>
+                  <td>0.0274</td>
+                  <td>0.995</td>
+                </tr>
+              </tbody>
             </table>
           </div>
         </article>
 
         <article class="doc-block">
           <h2>Bundle files</h2>
-          <ul id="bundleFileList" class="ref-list"></ul>
+          <ul class="ref-list">
+            <li><code>roi_web_bundle_20260413/README.md</code></li>
+            <li><code>roi_web_bundle_20260413/code/predict_roi.py</code></li>
+            <li><code>roi_web_bundle_20260413/code/model_defs.py</code></li>
+            <li><code>roi_web_bundle_20260413/metadata/supported_conditions.json</code></li>
+            <li><code>roi_web_bundle_20260413/metadata/time_grid.json</code></li>
+            <li><code>roi_web_bundle_20260413/metadata/model_selection.json</code></li>
+          </ul>
         </article>
 
         <article class="doc-block">
           <h2>Condition grid</h2>
           <p>The runtime is intentionally restricted to the supported values in the bundle metadata. That keeps the webapp aligned with the training and evaluation setup.</p>
-          <div id="referenceSupportedSummary" class="mini-summary"></div>
+          <div class="mini-summary">
+            <div class="summary-row"><strong>Bundle</strong><span>roi_web_bundle_20260413</span></div>
+            <div class="summary-row"><strong>Purpose</strong><span>Condition-only ROI inference bundle for injector 417 and 800 web deployment</span></div>
+            <div class="summary-row"><strong>Time axis</strong><span>us · 1024 points</span></div>
+            <div class="summary-row"><strong>ROI unit</strong><span>mg/ms</span></div>
+            <div class="summary-row"><strong>Geometry extension note</strong><span>Future versions may add geometry-aware inputs such as injector hole count or hole pattern.</span></div>
+          </div>
+          <div class="chips" style="margin-top: 0.85rem;">
+            <span class="chip">Injector 417: 100-350 bar, 30/90 C, ET 250-5000 us</span>
+            <span class="chip">Injector 800: 100-350 bar, 30/90 C, ET 250-5000 us</span>
+          </div>
         </article>
 
         <article class="doc-block highlight">
@@ -81,4 +116,3 @@
     </main>
   </body>
 </html>
-

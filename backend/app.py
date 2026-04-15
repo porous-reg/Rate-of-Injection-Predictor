@@ -24,7 +24,6 @@ app.add_middleware(
 )
 
 runtime = RoiRuntime()
-runtime.preload_all()
 
 
 class PredictRequest(BaseModel):

@@ -13,20 +13,8 @@ document.addEventListener("DOMContentLoaded", init);
 async function init() {
   cacheUi();
   bindTabs();
-  try {
-    state.catalog = await fetchJson("/api/supported-conditions");
-    if (ui.activeModelLabel) {
-      ui.activeModelLabel.textContent = selectedModelSummary();
-    }
-    if (ui.supportedConditions) renderSupportedConditions();
-    if (ui.modelRefTable) renderReferenceTables();
-    if (ui.referenceSupportedSummary) renderSupportedSummary();
-    if (document.body.dataset.page === "program") {
-      initProgramPage();
-    }
-  } catch (error) {
-    console.error(error);
-    showToast(`Failed to load catalog: ${error.message}`);
+  if (document.body.dataset.page === "program") {
+    await initProgramPage();
   }
 }
 
@@ -90,14 +78,71 @@ function selectedModelSummary() {
     .join(" / ");
 }
 
-function initProgramPage() {
-  populateSelectors();
-  setDemoDefaults();
-  bindProgramActions();
+async function initProgramPage() {
   renderSummaryCards(null);
   renderWaveform(null);
   renderBatchPreview([]);
   renderBatchResults([]);
+  if (ui.plotMeta) {
+    ui.plotMeta.textContent = "No prediction yet";
+  }
+
+  try {
+    state.catalog = await fetchJson("/api/supported-conditions");
+    if (ui.activeModelLabel) {
+      ui.activeModelLabel.textContent = selectedModelSummary();
+    }
+    if (ui.supportedConditions) renderSupportedConditions();
+    populateSelectors();
+    setDemoDefaults();
+    bindProgramActions();
+  } catch (error) {
+    console.error(error);
+    setProgramUnavailable(`Unable to load runtime catalog: ${error.message}`);
+    showToast(`Failed to load catalog: ${error.message}`);
+  }
+}
+
+function setProgramUnavailable(message) {
+  const controls = [
+    ui.injectorSelect,
+    ui.pressureSelect,
+    ui.tempSelect,
+    ui.etSelect,
+    ui.demoButton,
+    ui.resetButton,
+    ui.predictButton,
+    ui.singleCsvButton,
+    ui.applySingleCsvButton,
+    ui.batchCsvButton,
+    ui.parseBatchButton,
+    ui.runBatchButton,
+  ];
+  controls.forEach((control) => {
+    if (control) control.disabled = true;
+  });
+
+  if (ui.waveformPlot) {
+    ui.waveformPlot.innerHTML = `
+      <div class="empty-state">
+        <strong>Runtime unavailable</strong>
+        <div>${escapeHtml(message)}</div>
+      </div>
+    `;
+  }
+
+  if (ui.supportedConditions) {
+    ui.supportedConditions.innerHTML = `
+      <article class="support-card">
+        <h3>Runtime unavailable</h3>
+        <p class="muted">${escapeHtml(message)}</p>
+      </article>
+    `;
+  }
+
+  if (ui.activeModelLabel) {
+    ui.activeModelLabel.textContent = "Backend unavailable";
+  }
 }
 
 function populateSelectors() {
@@ -218,7 +263,16 @@ function summaryCard(label, value, detail) {
 }
 
 function renderWaveform(result) {
-  if (!ui.waveformPlot || typeof Plotly === "undefined") return;
+  if (!ui.waveformPlot) return;
+  if (typeof Plotly === "undefined") {
+    ui.waveformPlot.innerHTML = `
+      <div class="empty-state">
+        <strong>Plot library unavailable</strong>
+        <div>Load the local Plotly bundle to render the ROI waveform.</div>
+      </div>
+    `;
+    return;
+  }
   if (!result) {
     Plotly.newPlot(
       ui.waveformPlot,
@@ -576,4 +630,3 @@ function escapeHtml(value) {
 function showToast(message) {
   console.log(message);
 }
-
