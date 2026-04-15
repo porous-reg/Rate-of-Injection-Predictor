@@ -1,7 +1,7 @@
 const state = {
   catalog: null,
-  selectedBatchRows: [],
   loadedSingleRow: null,
+  selectedBatchRows: [],
   loadedBatchResults: [],
   lastPrediction: null,
 };
@@ -21,9 +21,9 @@ async function init() {
 function cacheUi() {
   const ids = [
     "injectorSelect",
-    "pressureSelect",
-    "tempSelect",
-    "etSelect",
+    "pressureInput",
+    "tempInput",
+    "etInput",
     "demoButton",
     "resetButton",
     "predictButton",
@@ -43,12 +43,10 @@ function cacheUi() {
     "batchPreviewBody",
     "batchResultsBody",
     "batchStatus",
-    "activeModelLabel",
-    "modelRefTable",
-    "bundleFileList",
-    "referenceSupportedSummary",
   ];
-  for (const id of ids) ui[id] = document.getElementById(id);
+  for (const id of ids) {
+    ui[id] = document.getElementById(id);
+  }
 }
 
 function bindTabs() {
@@ -61,25 +59,44 @@ function bindTabs() {
   });
 }
 
-async function fetchJson(url, options) {
-  const response = await fetch(url, options);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload.detail || payload.error || response.statusText;
-    throw new Error(message);
-  }
-  return payload;
-}
-
-function selectedModelSummary() {
-  if (!state.catalog?.selected_models) return "ROI runtime";
-  return Object.values(state.catalog.selected_models)
-    .map((item) => item.paper_label)
-    .join(" / ");
-}
-
 function fallbackCatalog() {
   return window.ROI_FALLBACK_CATALOG || null;
+}
+
+function apiBaseCandidates() {
+  const explicit = (new URLSearchParams(location.search).get("api") || localStorage.getItem("roiApiBase") || "").trim();
+  const candidates = [];
+  if (explicit) candidates.push(explicit);
+  if (location.protocol === "http:" || location.protocol === "https:") {
+    candidates.push(location.origin);
+  } else {
+    candidates.push("http://127.0.0.1:8000");
+    candidates.push("http://127.0.0.1:8013");
+  }
+  return [...new Set(candidates)];
+}
+
+async function fetchJson(path, options) {
+  let lastError = null;
+  const candidates = apiBaseCandidates();
+  for (let i = 0; i < candidates.length; i += 1) {
+    const base = candidates[i];
+    try {
+      const response = await fetch(new URL(path, base).href, options);
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) {
+        return payload;
+      }
+      if (response.status === 404 && i < candidates.length - 1) {
+        lastError = new Error(payload.detail || payload.error || response.statusText);
+        continue;
+      }
+      throw new Error(payload.detail || payload.error || response.statusText);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Request failed");
 }
 
 async function initProgramPage() {
@@ -93,14 +110,18 @@ async function initProgramPage() {
 
   state.catalog = fallbackCatalog();
   if (!state.catalog) {
-    showToast("Fallback catalog missing.");
+    if (ui.supportedConditions) {
+      ui.supportedConditions.innerHTML = `
+        <article class="support-card">
+          <h3>Catalog unavailable</h3>
+          <p class="muted">Fallback catalog is missing.</p>
+        </article>
+      `;
+    }
     return;
   }
 
-  if (ui.activeModelLabel) {
-    ui.activeModelLabel.textContent = selectedModelSummary();
-  }
-  if (ui.supportedConditions) renderSupportedConditions();
+  renderSupportedConditions();
   populateSelectors();
   setDemoDefaults();
   bindProgramActions();
@@ -108,12 +129,12 @@ async function initProgramPage() {
   try {
     const liveCatalog = await fetchJson("/api/supported-conditions");
     state.catalog = liveCatalog;
-    if (ui.activeModelLabel) {
-      ui.activeModelLabel.textContent = selectedModelSummary();
-    }
-    if (ui.supportedConditions) renderSupportedConditions();
+    renderSupportedConditions();
     populateSelectors();
     setDemoDefaults();
+    if (ui.plotMeta) {
+      ui.plotMeta.textContent = "Backend connected";
+    }
   } catch (error) {
     console.warn(`Using fallback catalog: ${error.message}`);
     if (ui.plotMeta) {
@@ -126,40 +147,43 @@ function populateSelectors() {
   const catalog = state.catalog.supported_conditions;
   const injectorIds = Object.keys(catalog).sort();
   ui.injectorSelect.innerHTML = injectorIds.map((id) => `<option value="${id}">Injector ${id}</option>`).join("");
-  ui.injectorSelect.value = "800";
-  populateConditionOptions();
+  ui.injectorSelect.value = injectorIds.includes("800") ? "800" : injectorIds[0];
+  updateInputHints(ui.injectorSelect.value);
 }
 
-function populateConditionOptions() {
-  const injectorId = ui.injectorSelect.value;
-  const catalog = state.catalog.supported_conditions[injectorId];
-  ui.pressureSelect.innerHTML = catalog.pressure_bar.map((value) => `<option value="${value}">${value}</option>`).join("");
-  ui.tempSelect.innerHTML = catalog.temp_c.map((value) => `<option value="${value}">${value}</option>`).join("");
-  ui.etSelect.innerHTML = catalog.et_us.map((value) => `<option value="${value}">${value}</option>`).join("");
+function updateInputHints(injectorId) {
+  const grid = state.catalog.supported_conditions[injectorId];
+  if (!grid) return;
+  const pressureMin = Math.min(...grid.pressure_bar);
+  const pressureMax = Math.max(...grid.pressure_bar);
+  const tempMin = Math.min(...grid.temp_c);
+  const tempMax = Math.max(...grid.temp_c);
+  const etMin = Math.min(...grid.et_us);
+  const etMax = Math.max(...grid.et_us);
+
+  ui.pressureInput.min = pressureMin;
+  ui.pressureInput.max = pressureMax;
+  ui.tempInput.min = tempMin;
+  ui.tempInput.max = tempMax;
+  ui.etInput.min = etMin;
+  ui.etInput.max = etMax;
+
+  ui.pressureInput.placeholder = `${pressureMin}-${pressureMax}`;
+  ui.tempInput.placeholder = `${tempMin}-${tempMax}`;
+  ui.etInput.placeholder = `${etMin}-${etMax}`;
 }
 
 function setDemoDefaults() {
   ui.injectorSelect.value = "800";
-  populateConditionOptions();
-  ui.pressureSelect.value = "200";
-  ui.tempSelect.value = "30";
-  ui.etSelect.value = "700";
+  updateInputHints(ui.injectorSelect.value);
+  ui.pressureInput.value = "200";
+  ui.tempInput.value = "30";
+  ui.etInput.value = "700";
 }
 
 function bindProgramActions() {
   ui.injectorSelect.addEventListener("change", () => {
-    const injectorId = ui.injectorSelect.value;
-    populateConditionOptions();
-    const defaults = {
-      "800": { pressure: "200", temp: "30", et: "700" },
-      "417": { pressure: "200", temp: "30", et: "700" },
-    };
-    const fallback = defaults[injectorId];
-    if (fallback) {
-      ui.pressureSelect.value = fallback.pressure;
-      ui.tempSelect.value = fallback.temp;
-      ui.etSelect.value = fallback.et;
-    }
+    updateInputHints(ui.injectorSelect.value);
   });
 
   ui.demoButton.addEventListener("click", () => {
@@ -171,7 +195,7 @@ function bindProgramActions() {
     setDemoDefaults();
     renderSummaryCards(null);
     renderWaveform(null);
-    ui.plotMeta.textContent = "No prediction yet";
+    if (ui.plotMeta) ui.plotMeta.textContent = "No prediction yet";
   });
 
   ui.predictButton.addEventListener("click", () => void runSinglePrediction());
@@ -195,7 +219,7 @@ async function runSinglePrediction() {
     state.lastPrediction = result;
     renderSummaryCards(result);
     renderWaveform(result);
-    ui.plotMeta.textContent = `Injector ${result.injector_id} · ${result.model_label}`;
+    if (ui.plotMeta) ui.plotMeta.textContent = `Injector ${result.injector_id}`;
   } catch (error) {
     showToast(error.message);
   }
@@ -204,9 +228,9 @@ async function runSinglePrediction() {
 function currentPayloadFromForm() {
   return {
     injector_id: ui.injectorSelect.value,
-    pressure_bar: Number(ui.pressureSelect.value),
-    temp_c: Number(ui.tempSelect.value),
-    et_us: Number(ui.etSelect.value),
+    pressure_bar: Number(ui.pressureInput.value),
+    temp_c: Number(ui.tempInput.value),
+    et_us: Number(ui.etInput.value),
   };
 }
 
@@ -214,7 +238,7 @@ function renderSummaryCards(result) {
   if (!ui.summaryCards) return;
   if (!result) {
     ui.summaryCards.innerHTML = [
-      summaryCard("Model", selectedModelSummary(), "Loaded from the copied bundle."),
+      summaryCard("Injector", "—", "Waiting for a prediction."),
       summaryCard("Peak ROI", "—", "Waiting for a prediction."),
       summaryCard("Peak time", "—", "Waiting for a prediction."),
       summaryCard("Integral", "—", "Waiting for a prediction."),
@@ -222,7 +246,7 @@ function renderSummaryCards(result) {
     return;
   }
   ui.summaryCards.innerHTML = [
-    summaryCard("Model", result.model_label, `Model id ${result.model_id}`),
+    summaryCard("Injector", result.injector_id, "Selected condition set"),
     summaryCard("Peak ROI", formatNumber(result.summary.peak_roi_mg_per_ms), `Mean ${formatNumber(result.summary.mean_roi_mg_per_ms)}`),
     summaryCard("Peak time", `${formatNumber(result.summary.peak_time_us)} us`, `Half-peak duration ${formatNumber(result.summary.duration_above_half_peak_us)} us`),
     summaryCard("Integral", formatNumber(result.summary.roi_area_mg), `10% duration ${formatNumber(result.summary.duration_above_10pct_peak_us)} us`),
@@ -250,6 +274,7 @@ function renderWaveform(result) {
     `;
     return;
   }
+
   if (!result) {
     Plotly.newPlot(
       ui.waveformPlot,
@@ -271,6 +296,7 @@ function renderWaveform(result) {
     name: "Peak",
     hovertemplate: "Peak<br>%{x:.1f} us<br>%{y:.4f} mg/ms<extra></extra>",
   };
+
   Plotly.newPlot(
     ui.waveformPlot,
     [
@@ -286,7 +312,7 @@ function renderWaveform(result) {
       },
       peakTrace,
     ],
-    plotLayout(`${result.model_label} · injector ${result.injector_id}`),
+    plotLayout(`Injector ${result.injector_id}`),
     { displayModeBar: true, responsive: true }
   );
 }
@@ -333,10 +359,10 @@ function applyLoadedSingleCsv() {
   }
   const row = state.loadedSingleRow;
   ui.injectorSelect.value = String(row.injector_id);
-  populateConditionOptions();
-  ui.pressureSelect.value = String(row.pressure_bar);
-  ui.tempSelect.value = String(row.temp_c);
-  ui.etSelect.value = String(row.et_us);
+  updateInputHints(ui.injectorSelect.value);
+  ui.pressureInput.value = String(row.pressure_bar);
+  ui.tempInput.value = String(row.temp_c);
+  ui.etInput.value = String(row.et_us);
   showToast(`Applied ${row.injector_id} row.`);
 }
 
@@ -364,7 +390,7 @@ async function parseBatchInput() {
     et_us: Number(row.et_us),
   }));
   renderBatchPreview(state.selectedBatchRows);
-  ui.batchStatus.textContent = `${state.selectedBatchRows.length} row(s) loaded`;
+  if (ui.batchStatus) ui.batchStatus.textContent = `${state.selectedBatchRows.length} row(s) loaded`;
 }
 
 async function runBatchPrediction() {
@@ -380,7 +406,7 @@ async function runBatchPrediction() {
     });
     state.loadedBatchResults = response.results || [];
     renderBatchResults(state.loadedBatchResults);
-    ui.batchStatus.textContent = `${state.loadedBatchResults.length} result(s) returned`;
+    if (ui.batchStatus) ui.batchStatus.textContent = `${state.loadedBatchResults.length} result(s) returned`;
   } catch (error) {
     showToast(error.message);
   }
@@ -412,10 +438,10 @@ function renderBatchPreview(rows) {
     button.addEventListener("click", () => {
       const row = rows[Number(button.dataset.useRow)];
       ui.injectorSelect.value = String(row.injector_id);
-      populateConditionOptions();
-      ui.pressureSelect.value = String(row.pressure_bar);
-      ui.tempSelect.value = String(row.temp_c);
-      ui.etSelect.value = String(row.et_us);
+      updateInputHints(ui.injectorSelect.value);
+      ui.pressureInput.value = String(row.pressure_bar);
+      ui.tempInput.value = String(row.temp_c);
+      ui.etInput.value = String(row.et_us);
       showToast(`Applied ${row.case_id}.`);
     });
   });
@@ -461,7 +487,7 @@ function renderBatchResults(results) {
         state.lastPrediction = entry.result;
         renderSummaryCards(entry.result);
         renderWaveform(entry.result);
-        ui.plotMeta.textContent = `Batch case ${entry.case_id} ? ${entry.result.model_label}`;
+        if (ui.plotMeta) ui.plotMeta.textContent = `Batch case ${entry.case_id}`;
       }
     });
   });
@@ -481,14 +507,11 @@ function validateRowClientSide(row) {
 
 function renderSupportedConditions() {
   const root = ui.supportedConditions;
-  const models = state.catalog.selected_models;
   root.innerHTML = Object.entries(state.catalog.supported_conditions)
     .map(([injectorId, grid]) => {
-      const model = models[injectorId];
       return `
         <article class="support-card">
           <h3>Injector ${injectorId}</h3>
-          <p class="muted">${model.paper_label} · RMSE ${model.rmse} · R² ${model.r2}</p>
           <div class="chips">
             <span class="chip">Pressure: ${grid.pressure_bar.join(", ")} bar</span>
             <span class="chip">Temp: ${grid.temp_c.join(", ")} degC</span>
@@ -497,52 +520,6 @@ function renderSupportedConditions() {
         </article>
       `;
     })
-    .join("");
-}
-
-function renderReferenceTables() {
-  const table = ui.modelRefTable?.querySelector("tbody");
-  if (table) {
-    table.innerHTML = Object.entries(state.catalog.selected_models)
-      .map(([injectorId, model]) => {
-        return `
-          <tr>
-            <td>${escapeHtml(injectorId)}</td>
-            <td>${escapeHtml(model.paper_label)}</td>
-            <td>${escapeHtml(model.code_model_id)}</td>
-            <td>${escapeHtml(model.split)}</td>
-            <td>${formatNumber(model.rmse)}</td>
-            <td>${formatNumber(model.mae)}</td>
-            <td>${formatNumber(model.r2)}</td>
-          </tr>
-        `;
-      })
-      .join("");
-  }
-
-  if (ui.bundleFileList) {
-    const files = [
-      "roi_web_bundle_20260413/README.md",
-      "roi_web_bundle_20260413/code/predict_roi.py",
-      "roi_web_bundle_20260413/code/model_defs.py",
-      "roi_web_bundle_20260413/metadata/supported_conditions.json",
-      "roi_web_bundle_20260413/metadata/time_grid.json",
-      "roi_web_bundle_20260413/metadata/model_selection.json",
-    ];
-    ui.bundleFileList.innerHTML = files.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
-  }
-}
-
-function renderSupportedSummary() {
-  const rows = [
-    ["Bundle", state.catalog.bundle_name],
-    ["Purpose", state.catalog.purpose],
-    ["Time axis", `${state.catalog.time_axis_unit} ? ${state.catalog.time_axis_length} points`],
-    ["ROI unit", state.catalog.roi_unit],
-    ["Extension note", state.catalog.geometry_extension_note],
-  ];
-  ui.referenceSupportedSummary.innerHTML = rows
-    .map(([label, value]) => `<div class="summary-row"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(String(value))}</span></div>`)
     .join("");
 }
 
@@ -606,4 +583,7 @@ function escapeHtml(value) {
 
 function showToast(message) {
   console.log(message);
+  if (ui.plotMeta) {
+    ui.plotMeta.textContent = message;
+  }
 }

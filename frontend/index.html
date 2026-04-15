@@ -39,7 +39,7 @@
           <div class="eyebrow">Prediction inputs</div>
           <h2>Condition-only runtime</h2>
           <p class="muted">
-            This v1 workflow uses injector id, pressure, fuel temperature, and energizing time.
+            This v1 workflow uses injector id, rail pressure, fuel temperature, and energizing time.
           </p>
         </section>
 
@@ -47,14 +47,14 @@
           <label for="injectorSelect">Injector</label>
           <select id="injectorSelect"></select>
 
-          <label for="pressureSelect">Rail pressure [bar]</label>
-          <select id="pressureSelect"></select>
+          <label for="pressureInput">Rail pressure [bar]</label>
+          <input id="pressureInput" type="number" step="1" inputmode="numeric" />
 
-          <label for="tempSelect">Fuel temperature [degC]</label>
-          <select id="tempSelect"></select>
+          <label for="tempInput">Fuel temperature [degC]</label>
+          <input id="tempInput" type="number" step="1" inputmode="numeric" />
 
-          <label for="etSelect">Energizing time [us]</label>
-          <select id="etSelect"></select>
+          <label for="etInput">Energizing time [us]</label>
+          <input id="etInput" type="number" step="1" inputmode="numeric" />
 
           <div class="row-actions">
             <button id="demoButton" class="secondary">Load demo</button>
@@ -120,7 +120,7 @@
             <div class="eyebrow">Waveform inference</div>
             <h1>Predict ROI waveform from operating conditions.</h1>
             <p>
-              Select an injector, choose a supported condition, and the model returns the full ROI waveform with summary metrics.
+              Select an injector, enter pressure, temperature, and energizing time directly, and the runtime returns the full ROI waveform with summary metrics.
             </p>
           </div>
           <div class="hero-visual" aria-hidden="true">
@@ -130,8 +130,8 @@
             </div>
             <div class="signal-arrow">→</div>
             <div class="signal-card accent">
-              <div class="signal-label">Model</div>
-              <div class="signal-value" id="activeModelLabel">ET-Transformer / ET-MLP-BayesReg</div>
+              <div class="signal-label">Runtime</div>
+              <div class="signal-value">Ready</div>
             </div>
             <div class="signal-arrow">→</div>
             <div class="signal-card">
