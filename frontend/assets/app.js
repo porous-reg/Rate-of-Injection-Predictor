@@ -78,6 +78,10 @@ function selectedModelSummary() {
     .join(" / ");
 }
 
+function fallbackCatalog() {
+  return window.ROI_FALLBACK_CATALOG || null;
+}
+
 async function initProgramPage() {
   renderSummaryCards(null);
   renderWaveform(null);
@@ -87,61 +91,34 @@ async function initProgramPage() {
     ui.plotMeta.textContent = "No prediction yet";
   }
 
+  state.catalog = fallbackCatalog();
+  if (!state.catalog) {
+    showToast("Fallback catalog missing.");
+    return;
+  }
+
+  if (ui.activeModelLabel) {
+    ui.activeModelLabel.textContent = selectedModelSummary();
+  }
+  if (ui.supportedConditions) renderSupportedConditions();
+  populateSelectors();
+  setDemoDefaults();
+  bindProgramActions();
+
   try {
-    state.catalog = await fetchJson("/api/supported-conditions");
+    const liveCatalog = await fetchJson("/api/supported-conditions");
+    state.catalog = liveCatalog;
     if (ui.activeModelLabel) {
       ui.activeModelLabel.textContent = selectedModelSummary();
     }
     if (ui.supportedConditions) renderSupportedConditions();
     populateSelectors();
     setDemoDefaults();
-    bindProgramActions();
   } catch (error) {
-    console.error(error);
-    setProgramUnavailable(`Unable to load runtime catalog: ${error.message}`);
-    showToast(`Failed to load catalog: ${error.message}`);
-  }
-}
-
-function setProgramUnavailable(message) {
-  const controls = [
-    ui.injectorSelect,
-    ui.pressureSelect,
-    ui.tempSelect,
-    ui.etSelect,
-    ui.demoButton,
-    ui.resetButton,
-    ui.predictButton,
-    ui.singleCsvButton,
-    ui.applySingleCsvButton,
-    ui.batchCsvButton,
-    ui.parseBatchButton,
-    ui.runBatchButton,
-  ];
-  controls.forEach((control) => {
-    if (control) control.disabled = true;
-  });
-
-  if (ui.waveformPlot) {
-    ui.waveformPlot.innerHTML = `
-      <div class="empty-state">
-        <strong>Runtime unavailable</strong>
-        <div>${escapeHtml(message)}</div>
-      </div>
-    `;
-  }
-
-  if (ui.supportedConditions) {
-    ui.supportedConditions.innerHTML = `
-      <article class="support-card">
-        <h3>Runtime unavailable</h3>
-        <p class="muted">${escapeHtml(message)}</p>
-      </article>
-    `;
-  }
-
-  if (ui.activeModelLabel) {
-    ui.activeModelLabel.textContent = "Backend unavailable";
+    console.warn(`Using fallback catalog: ${error.message}`);
+    if (ui.plotMeta) {
+      ui.plotMeta.textContent = "Backend unavailable. Inputs remain editable.";
+    }
   }
 }
 
@@ -484,7 +461,7 @@ function renderBatchResults(results) {
         state.lastPrediction = entry.result;
         renderSummaryCards(entry.result);
         renderWaveform(entry.result);
-        ui.plotMeta.textContent = `Batch case ${entry.case_id} · ${entry.result.model_label}`;
+        ui.plotMeta.textContent = `Batch case ${entry.case_id} ? ${entry.result.model_label}`;
       }
     });
   });
@@ -560,7 +537,7 @@ function renderSupportedSummary() {
   const rows = [
     ["Bundle", state.catalog.bundle_name],
     ["Purpose", state.catalog.purpose],
-    ["Time axis", `${state.catalog.time_axis_unit} · ${state.catalog.time_axis_length} points`],
+    ["Time axis", `${state.catalog.time_axis_unit} ? ${state.catalog.time_axis_length} points`],
     ["ROI unit", state.catalog.roi_unit],
     ["Extension note", state.catalog.geometry_extension_note],
   ];
