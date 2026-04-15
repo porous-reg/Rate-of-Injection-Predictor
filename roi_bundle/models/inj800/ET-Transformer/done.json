@@ -1,0 +1,18 @@
+{
+  "model": "TRM_NO_CURRENT",
+  "split": "S2_condition_holdout",
+  "target": "TGT_raw",
+  "injector_id": "800",
+  "input_variant": "NO_CURRENT",
+  "experiments_hash": "4b5c51676fc2058ed1f70b00635ba13137db2c98cdb43a70d5b526f75f1f126f",
+  "runs_hash": "8b7a4d7faa69a32751eebc0798baa63498c942b4c174d9130184558eff7b77f0",
+  "split_hash": "710c6177ecab32c567ce1d6aa07ff2601e5035db850bbd9b9276497a1097f00f",
+  "run_hash": "557e8a609dd0d40d3ff42ff8bb42796b30a9cdee01fdad4ec447f7147cf1e9e2",
+  "status": "trained",
+  "checkpoint": "artifacts/results/checkpoints/inj800/TRM_NO_CURRENT/S2_condition_holdout/TGT_raw",
+  "cache_dir": "dataset_v1/cache_t1024",
+  "cache_hash": "7b0729019a341363c69f685ee29f7d84c496a21a2e1fc0edbbbf41bf2af38862",
+  "baseline_path": "artifacts/results/checkpoints/inj800/TRM_NO_CURRENT/S2_condition_holdout/TGT_raw/baseline_mean.npz",
+  "baseline_type": "condition_mean",
+  "train_count": "12221"
+}

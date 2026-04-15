@@ -1,0 +1,9 @@
+{
+  "model_id": "TRM_NO_CURRENT",
+  "input_variant": "NO_CURRENT",
+  "target_len": 1024,
+  "device": "cuda",
+  "training": {
+    "val_mse": 0.19267962152632523
+  }
+}

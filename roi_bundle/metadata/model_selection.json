@@ -1,0 +1,23 @@
+{
+  "800": {
+    "paper_label": "ET-Transformer",
+    "code_model_id": "TRM_NO_CURRENT",
+    "split": "S2_condition_holdout",
+    "target_variant": "TGT_raw",
+    "rmse": 0.188,
+    "mae": 0.036,
+    "r2": 0.9925,
+    "runtime_architecture": "MLPSequence",
+    "notes": "The selected TRM_NO_CURRENT checkpoint serializes MLP weights because the original NO_CURRENT builder path resolves to the MLP branch."
+  },
+  "417": {
+    "paper_label": "ET-MLP-BayesReg",
+    "code_model_id": "B_MLP_BayesReg_scalar",
+    "split": "S2_condition_holdout",
+    "target_variant": "TGT_raw",
+    "rmse": 0.1158,
+    "mae": 0.0274,
+    "r2": 0.995,
+    "runtime_architecture": "MLPSequence"
+  }
+}

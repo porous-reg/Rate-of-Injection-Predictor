@@ -1,0 +1,9 @@
+{
+  "model_id": "B_MLP_BayesReg_scalar",
+  "input_variant": "NO_CURRENT",
+  "target_len": 1024,
+  "device": "cuda",
+  "training": {
+    "val_mse": 0.09385159957386992
+  }
+}

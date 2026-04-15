@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ROI Predictor | References</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body data-page="references">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">ROI</div>
+        <div>
+          <div class="brand-name">ROI Predictor</div>
+          <div class="brand-subtitle">Authorized by Jongjin Chung, Joonsik Hwang (KAIST)</div>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Site sections">
+        <a href="/intro.html">Intro</a>
+        <a href="/index.html">Program</a>
+        <a href="/logic.html">Logic</a>
+        <a class="active" href="/references.html">References</a>
+      </nav>
+    </header>
+
+    <main class="doc-layout">
+      <section class="doc-hero">
+        <div class="eyebrow">References</div>
+        <h1>Bundle provenance and model mapping</h1>
+        <p>
+          This page documents the shipped bundle, the selected checkpoints, and the files that define the supported condition grid.
+        </p>
+      </section>
+
+      <section class="doc-grid">
+        <article class="doc-block full">
+          <h2>Selected models</h2>
+          <div class="table-wrap">
+            <table class="data-table compact" id="modelRefTable">
+              <thead>
+                <tr>
+                  <th>injector</th>
+                  <th>paper label</th>
+                  <th>code model id</th>
+                  <th>split</th>
+                  <th>rmse</th>
+                  <th>mae</th>
+                  <th>r2</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="doc-block">
+          <h2>Bundle files</h2>
+          <ul id="bundleFileList" class="ref-list"></ul>
+        </article>
+
+        <article class="doc-block">
+          <h2>Condition grid</h2>
+          <p>The runtime is intentionally restricted to the supported values in the bundle metadata. That keeps the webapp aligned with the training and evaluation setup.</p>
+          <div id="referenceSupportedSummary" class="mini-summary"></div>
+        </article>
+
+        <article class="doc-block highlight">
+          <h2>Deployment note</h2>
+          <p>
+            The model bundle is condition-only, but the webapp shell is intentionally designed to allow future geometry-aware ROI versions to reuse the same site pattern.
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
+

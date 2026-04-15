@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ROI Predictor</title>
+    <meta name="description" content="ROI Predictor webapp for condition-only waveform inference." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body data-page="program">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">ROI</div>
+        <div>
+          <div class="brand-name">ROI Predictor</div>
+          <div class="brand-subtitle">Authorized by Jongjin Chung, Joonsik Hwang (KAIST)</div>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Site sections">
+        <a href="/intro.html">Intro</a>
+        <a class="active" href="/index.html">Program</a>
+        <a href="/logic.html">Logic</a>
+        <a href="/references.html">References</a>
+      </nav>
+    </header>
+
+    <main class="app-shell app-program">
+      <aside class="rail">
+        <section class="rail-block">
+          <div class="eyebrow">Prediction inputs</div>
+          <h2>Condition-only runtime</h2>
+          <p class="muted">
+            This v1 workflow uses injector id, pressure, fuel temperature, and energizing time.
+          </p>
+        </section>
+
+        <section class="panel">
+          <label for="injectorSelect">Injector</label>
+          <select id="injectorSelect"></select>
+
+          <label for="pressureSelect">Rail pressure [bar]</label>
+          <select id="pressureSelect"></select>
+
+          <label for="tempSelect">Fuel temperature [degC]</label>
+          <select id="tempSelect"></select>
+
+          <label for="etSelect">Energizing time [us]</label>
+          <select id="etSelect"></select>
+
+          <div class="row-actions">
+            <button id="demoButton" class="secondary">Load demo</button>
+            <button id="resetButton" class="secondary">Reset</button>
+          </div>
+          <button id="predictButton" class="primary">Run prediction</button>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Single-case CSV</div>
+              <h3>Import one row</h3>
+            </div>
+          </div>
+          <div class="file-row">
+            <button id="singleCsvButton" class="secondary file-button">Choose file</button>
+            <span id="singleCsvName" class="file-name">No file selected</span>
+            <input id="singleCsvInput" type="file" accept=".csv,text/csv" hidden />
+          </div>
+          <div class="inline-actions">
+            <a class="text-link" href="/assets/samples/single_case_sample.csv" download>Download sample</a>
+            <button id="applySingleCsvButton" class="ghost">Apply row</button>
+          </div>
+          <p class="note">
+            Use a CSV with headers: <code>injector_id,pressure_bar,temp_c,et_us</code>.
+          </p>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Batch prediction</div>
+              <h3>Condition CSV</h3>
+            </div>
+          </div>
+          <div class="file-row">
+            <button id="batchCsvButton" class="secondary file-button">Choose file</button>
+            <span id="batchCsvName" class="file-name">No file selected</span>
+            <input id="batchCsvInput" type="file" accept=".csv,text/csv" hidden />
+          </div>
+          <div class="inline-actions">
+            <a class="text-link" href="/assets/samples/batch_condition_sample.csv" download>Download sample</a>
+            <button id="parseBatchButton" class="ghost">Load rows</button>
+          </div>
+          <button id="runBatchButton" class="primary">Run batch</button>
+          <p class="note">
+            Batch rows may include <code>case_id</code>. If omitted, the app assigns one.
+          </p>
+        </section>
+
+        <section class="panel small-note">
+          <div class="eyebrow">Future extension</div>
+          <p>
+            This version is condition-only. Geometry-aware inputs such as injector hole count are reserved for a later release.
+          </p>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <section class="hero-panel">
+          <div class="hero-copy">
+            <div class="eyebrow">Waveform inference</div>
+            <h1>Predict ROI waveform from operating conditions.</h1>
+            <p>
+              Select an injector, choose a supported condition, and the model returns the full ROI waveform with summary metrics.
+            </p>
+          </div>
+          <div class="hero-visual" aria-hidden="true">
+            <div class="signal-card">
+              <div class="signal-label">Input</div>
+              <div class="signal-value">Condition set</div>
+            </div>
+            <div class="signal-arrow">→</div>
+            <div class="signal-card accent">
+              <div class="signal-label">Model</div>
+              <div class="signal-value" id="activeModelLabel">ET-Transformer / ET-MLP-BayesReg</div>
+            </div>
+            <div class="signal-arrow">→</div>
+            <div class="signal-card">
+              <div class="signal-label">Output</div>
+              <div class="signal-value">ROI waveform</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="summary-grid" id="summaryCards"></section>
+
+        <section class="panel plot-panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Prediction plot</div>
+              <h2>ROI waveform</h2>
+            </div>
+            <div class="plot-meta" id="plotMeta">No prediction yet</div>
+          </div>
+          <div id="waveformPlot" class="plot-canvas"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Batch preview</div>
+              <h2>Loaded rows</h2>
+            </div>
+            <div class="plot-meta" id="batchStatus">No batch loaded</div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>case_id</th>
+                  <th>injector</th>
+                  <th>pressure_bar</th>
+                  <th>temp_c</th>
+                  <th>et_us</th>
+                  <th>status</th>
+                  <th>action</th>
+                </tr>
+              </thead>
+              <tbody id="batchPreviewBody">
+                <tr>
+                  <td colspan="7" class="empty-state">Load a batch CSV to preview rows.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Batch results</div>
+              <h2>Prediction summary</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>case_id</th>
+                  <th>injector</th>
+                  <th>peak_roi</th>
+                  <th>peak_time_us</th>
+                  <th>roi_area_mg</th>
+                  <th>status</th>
+                  <th>view</th>
+                </tr>
+              </thead>
+              <tbody id="batchResultsBody">
+                <tr>
+                  <td colspan="7" class="empty-state">No batch results yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Supported set</div>
+              <h2>Allowed conditions</h2>
+            </div>
+          </div>
+          <div id="supportedConditions" class="supported-grid"></div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
+

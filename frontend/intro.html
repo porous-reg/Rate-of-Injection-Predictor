@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ROI Predictor | Intro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body data-page="intro">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">ROI</div>
+        <div>
+          <div class="brand-name">ROI Predictor</div>
+          <div class="brand-subtitle">Authorized by Jongjin Chung, Joonsik Hwang (KAIST)</div>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Site sections">
+        <a class="active" href="/intro.html">Intro</a>
+        <a href="/index.html">Program</a>
+        <a href="/logic.html">Logic</a>
+        <a href="/references.html">References</a>
+      </nav>
+    </header>
+
+    <main class="landing">
+      <section class="landing-hero">
+        <div class="landing-copy">
+          <div class="eyebrow">ROI waveform predictor</div>
+          <h1>Predict the full ROI waveform from operating conditions.</h1>
+          <p>
+            This site wraps the ROI runtime bundle into a simple web workflow: choose an injector, set the condition, and inspect the predicted waveform with summary metrics.
+          </p>
+          <div class="landing-actions">
+            <a class="primary-link" href="/index.html">Open Program</a>
+            <a class="secondary-link" href="/logic.html">Read Logic</a>
+          </div>
+        </div>
+        <div class="landing-visual">
+          <div class="intro-flow">
+            <div class="flow-step">
+              <span>1</span>
+              <strong>Inputs</strong>
+              <p>Injector id, pressure, fuel temperature, energizing time.</p>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step accent">
+              <span>2</span>
+              <strong>Runtime</strong>
+              <p>Validated against the supported condition grid and routed into the bundled model.</p>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <span>3</span>
+              <strong>Output</strong>
+              <p>ROI waveform, peak value, peak time, and integrated response.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="info-columns">
+        <article class="info-block">
+          <h2>What this site is</h2>
+          <p>
+            A deployment-friendly ROI webapp with the same structural interaction pattern as the plume site: top tabs, a left control rail, and a right workspace for plots and tables.
+          </p>
+        </article>
+        <article class="info-block">
+          <h2>What this site is not</h2>
+          <p>
+            It is not a plume-physics application and it does not use geometry-driven collapse logic. The first release is condition-only.
+          </p>
+        </article>
+        <article class="info-block">
+          <h2>Future extension</h2>
+          <p>
+            The interface is designed so geometry-aware inputs such as injector hole count can be added later without changing the overall site structure.
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
+

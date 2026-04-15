@@ -1,0 +1,28 @@
+{
+  "examples": [
+    {
+      "injector_id": "800",
+      "pressure_bar": 200,
+      "temp_c": 30,
+      "et_us": 700
+    },
+    {
+      "injector_id": "800",
+      "pressure_bar": 350,
+      "temp_c": 90,
+      "et_us": 1000
+    },
+    {
+      "injector_id": "417",
+      "pressure_bar": 200,
+      "temp_c": 30,
+      "et_us": 700
+    },
+    {
+      "injector_id": "417",
+      "pressure_bar": 300,
+      "temp_c": 90,
+      "et_us": 500
+    }
+  ]
+}

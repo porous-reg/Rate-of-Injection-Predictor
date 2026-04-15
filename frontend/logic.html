@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ROI Predictor | Logic</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body data-page="logic">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">ROI</div>
+        <div>
+          <div class="brand-name">ROI Predictor</div>
+          <div class="brand-subtitle">Authorized by Jongjin Chung, Joonsik Hwang (KAIST)</div>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Site sections">
+        <a href="/intro.html">Intro</a>
+        <a href="/index.html">Program</a>
+        <a class="active" href="/logic.html">Logic</a>
+        <a href="/references.html">References</a>
+      </nav>
+    </header>
+
+    <main class="doc-layout">
+      <section class="doc-hero">
+        <div class="eyebrow">Logic</div>
+        <h1>How the ROI webapp works</h1>
+        <p>
+          The app validates the condition against the supported grid, selects the appropriate checkpoint by injector, runs the bundled runtime, and returns the full waveform plus summary metrics.
+        </p>
+      </section>
+
+      <section class="doc-grid">
+        <article class="doc-block">
+          <h2>1. Input contract</h2>
+          <p>The current runtime accepts four values only:</p>
+          <ul>
+            <li><code>injector_id</code>: 417 or 800</li>
+            <li><code>pressure_bar</code>: rail pressure</li>
+            <li><code>temp_c</code>: fuel temperature</li>
+            <li><code>et_us</code>: energizing time</li>
+          </ul>
+          <p>Supported values come from the bundle metadata and are not extrapolated by default.</p>
+        </article>
+
+        <article class="doc-block">
+          <h2>2. Validation and selection</h2>
+          <p>Before prediction, the backend checks:</p>
+          <ul>
+            <li>injector id is one of the supported injectors</li>
+            <li>pressure, temperature, and ET match the injector-specific allowed grid</li>
+            <li>the selected injector maps to the proper checkpoint</li>
+          </ul>
+          <p>This keeps the UI aligned with the training bundle.</p>
+        </article>
+
+        <article class="doc-block">
+          <h2>3. Runtime path</h2>
+          <ol>
+            <li>Load the selected model checkpoint from the copied bundle</li>
+            <li>Normalize the three condition inputs</li>
+            <li>Run the model forward on CPU</li>
+            <li>De-normalize the ROI waveform</li>
+            <li>Return <code>time_us</code> and <code>roi_mg_per_ms</code></li>
+          </ol>
+          <p>The backend caches the model after first load so the next request is faster.</p>
+        </article>
+
+        <article class="doc-block">
+          <h2>4. Summary metrics</h2>
+          <p>The UI derives simple metrics from the predicted waveform:</p>
+          <ul>
+            <li>peak ROI value</li>
+            <li>time of the peak</li>
+            <li>integrated ROI area</li>
+            <li>duration above peak thresholds</li>
+          </ul>
+        </article>
+
+        <article class="doc-block">
+          <h2>5. Batch mode</h2>
+          <p>Batch CSV rows are parsed into the same input contract and passed through the same validation path. Invalid rows are reported individually rather than stopping the whole batch.</p>
+        </article>
+
+        <article class="doc-block highlight">
+          <h2>6. Future geometry-aware extension</h2>
+          <p>
+            v1 is condition-only. The UI and handoff are intentionally structured so a later version can add geometry-aware inputs such as injector hole count, PCD, or hole pattern without changing the app shell.
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
+
