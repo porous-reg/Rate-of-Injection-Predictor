@@ -24,6 +24,9 @@ function cacheUi() {
     "pressureInput",
     "tempInput",
     "etInput",
+    "apiBaseInput",
+    "saveApiBaseButton",
+    "clearApiBaseButton",
     "demoButton",
     "resetButton",
     "predictButton",
@@ -43,6 +46,7 @@ function cacheUi() {
     "batchPreviewBody",
     "batchResultsBody",
     "batchStatus",
+    "apiBaseNote",
   ];
   for (const id of ids) {
     ui[id] = document.getElementById(id);
@@ -64,9 +68,11 @@ function fallbackCatalog() {
 }
 
 function apiBaseCandidates() {
+  const runtimeBase = (window.ROI_API_BASE || "").trim();
   const explicit = (new URLSearchParams(location.search).get("api") || localStorage.getItem("roiApiBase") || "").trim();
   const candidates = [];
   if (explicit) candidates.push(explicit);
+  if (runtimeBase) candidates.push(runtimeBase);
   if (location.protocol === "http:" || location.protocol === "https:") {
     candidates.push(location.origin);
   } else {
@@ -124,6 +130,7 @@ async function initProgramPage() {
   renderSupportedConditions();
   populateSelectors();
   setDemoDefaults();
+  syncApiBaseField();
   bindProgramActions();
 
   try {
@@ -132,6 +139,7 @@ async function initProgramPage() {
     renderSupportedConditions();
     populateSelectors();
     setDemoDefaults();
+    syncApiBaseField();
     if (ui.plotMeta) {
       ui.plotMeta.textContent = "Backend connected";
     }
@@ -186,6 +194,30 @@ function bindProgramActions() {
     updateInputHints(ui.injectorSelect.value);
   });
 
+  if (ui.saveApiBaseButton) {
+    ui.saveApiBaseButton.addEventListener("click", () => {
+      const base = (ui.apiBaseInput?.value || "").trim();
+      if (!base) {
+        localStorage.removeItem("roiApiBase");
+        syncApiBaseField();
+        showToast("Cleared backend URL.");
+        return;
+      }
+      localStorage.setItem("roiApiBase", base);
+      syncApiBaseField();
+      showToast("Saved backend URL.");
+    });
+  }
+
+  if (ui.clearApiBaseButton) {
+    ui.clearApiBaseButton.addEventListener("click", () => {
+      localStorage.removeItem("roiApiBase");
+      if (ui.apiBaseInput) ui.apiBaseInput.value = "";
+      syncApiBaseField();
+      showToast("Cleared backend URL.");
+    });
+  }
+
   ui.demoButton.addEventListener("click", () => {
     setDemoDefaults();
     void runSinglePrediction();
@@ -208,6 +240,19 @@ function bindProgramActions() {
   ui.runBatchButton.addEventListener("click", () => void runBatchPrediction());
 }
 
+function syncApiBaseField() {
+  const saved = (localStorage.getItem("roiApiBase") || "").trim();
+  if (ui.apiBaseInput) {
+    ui.apiBaseInput.value = saved;
+    ui.apiBaseInput.placeholder = "https://your-backend.example.com";
+  }
+  if (ui.apiBaseNote) {
+    ui.apiBaseNote.textContent = saved
+      ? `Backend URL saved: ${saved}`
+      : "If the backend is hosted separately from this Cloudflare page, paste its base URL here.";
+  }
+}
+
 async function runSinglePrediction() {
   const payload = currentPayloadFromForm();
   try {
@@ -221,7 +266,7 @@ async function runSinglePrediction() {
     renderWaveform(result);
     if (ui.plotMeta) ui.plotMeta.textContent = `Injector ${result.injector_id}`;
   } catch (error) {
-    showToast(error.message);
+    showToast(formatBackendError(error));
   }
 }
 
@@ -408,7 +453,7 @@ async function runBatchPrediction() {
     renderBatchResults(state.loadedBatchResults);
     if (ui.batchStatus) ui.batchStatus.textContent = `${state.loadedBatchResults.length} result(s) returned`;
   } catch (error) {
-    showToast(error.message);
+    showToast(formatBackendError(error));
   }
 }
 
@@ -586,4 +631,12 @@ function showToast(message) {
   if (ui.plotMeta) {
     ui.plotMeta.textContent = message;
   }
+}
+
+function formatBackendError(error) {
+  const message = error?.message || "Request failed";
+  if (/failed to fetch|networkerror|network/i.test(message)) {
+    return "Backend unreachable. Save a backend URL or start the FastAPI server.";
+  }
+  return message;
 }

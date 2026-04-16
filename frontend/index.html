@@ -106,6 +106,30 @@
           </p>
         </section>
 
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Backend API</div>
+              <h3>Connect runtime</h3>
+            </div>
+          </div>
+          <label for="apiBaseInput">Backend URL</label>
+          <input
+            id="apiBaseInput"
+            type="url"
+            inputmode="url"
+            placeholder="https://your-backend.example.com"
+            autocomplete="url"
+          />
+          <div class="row-actions">
+            <button id="saveApiBaseButton" class="secondary">Save URL</button>
+            <button id="clearApiBaseButton" class="secondary">Clear</button>
+          </div>
+          <p class="note" id="apiBaseNote">
+            If the backend is hosted separately from this Cloudflare page, paste its base URL here.
+          </p>
+        </section>
+
         <section class="panel small-note">
           <div class="eyebrow">Future extension</div>
           <p>
