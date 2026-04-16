@@ -39,6 +39,14 @@ def _is_exact_member(value: float, allowed_values: list[float]) -> bool:
     return False
 
 
+def _is_within_range(value: float, allowed_values: list[float]) -> bool:
+    if not allowed_values:
+        return False
+    low = min(float(v) for v in allowed_values)
+    high = max(float(v) for v in allowed_values)
+    return low <= float(value) <= high
+
+
 def validate_condition(
     injector_id: Any,
     pressure_bar: float,
@@ -53,8 +61,8 @@ def validate_condition(
         errors.append(f"pressure_bar {pressure_bar!r} is not supported for injector {injector_key}")
     if not _is_exact_member(float(temp_c), catalog["temp_c"]):
         errors.append(f"temp_c {temp_c!r} is not supported for injector {injector_key}")
-    if not _is_exact_member(float(et_us), catalog["et_us"]):
-        errors.append(f"et_us {et_us!r} is not supported for injector {injector_key}")
+    if not _is_within_range(float(et_us), catalog["et_us"]):
+        errors.append(f"et_us {et_us!r} is outside the supported range for injector {injector_key}")
 
     if errors:
         raise ValueError("; ".join(errors))

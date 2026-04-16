@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   catalog: null,
   loadedSingleRow: null,
   selectedBatchRows: [],
@@ -178,7 +178,7 @@ function updateInputHints(injectorId) {
 
   ui.pressureInput.placeholder = `${pressureMin}-${pressureMax}`;
   ui.tempInput.placeholder = `${tempMin}-${tempMax}`;
-  ui.etInput.placeholder = `${etMin}-${etMax}`;
+  ui.etInput.placeholder = `${etMin}-${etMax} (continuous)`;
 }
 
 function setDemoDefaults() {
@@ -541,13 +541,15 @@ function renderBatchResults(results) {
 function validateRowClientSide(row) {
   const catalog = state.catalog.supported_conditions[String(row.injector_id)];
   if (!catalog) return { ok: false, message: "unsupported injector" };
+  const etMin = Math.min(...catalog.et_us);
+  const etMax = Math.max(...catalog.et_us);
   const checks = [
     catalog.pressure_bar.includes(Number(row.pressure_bar)),
     catalog.temp_c.includes(Number(row.temp_c)),
-    catalog.et_us.includes(Number(row.et_us)),
+    Number(row.et_us) >= etMin && Number(row.et_us) <= etMax,
   ];
   if (checks.every(Boolean)) return { ok: true, message: "ready" };
-  return { ok: false, message: "outside supported grid" };
+  return { ok: false, message: "outside supported range" };
 }
 
 function renderSupportedConditions() {
@@ -560,7 +562,7 @@ function renderSupportedConditions() {
           <div class="chips">
             <span class="chip">Pressure: ${grid.pressure_bar.join(", ")} bar</span>
             <span class="chip">Temp: ${grid.temp_c.join(", ")} degC</span>
-            <span class="chip">ET count: ${grid.et_us.length}</span>
+            <span class="chip">ET range: ${Math.min(...grid.et_us)} - ${Math.max(...grid.et_us)} us</span>
           </div>
         </article>
       `;
