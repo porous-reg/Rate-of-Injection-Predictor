@@ -1,6 +1,6 @@
-case_id,injector_id,pressure_bar,temp_c,et_us
-demo_1,800,200,30,700
-demo_2,800,350,90,1000
-demo_3,417,200,30,700
-demo_4,417,300,90,500
-
+case_id,pressure_bar,duration_us
+case_1,100,300
+case_2,150,500
+case_3,200,700
+case_4,250,1200
+case_5,300,1800

@@ -1,103 +1,156 @@
 from __future__ import annotations
 
-import json
-import sys
+import math
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from .validators import BUNDLE_MANIFEST, BUNDLE_ROOT, BUNDLE_LOAD_ERRORS, MODEL_SELECTION, SUPPORTED_CONDITIONS, TIME_GRID, validate_condition
+from .validators import MODEL_METADATA, SUPPORTED_DURATION_RANGE, SUPPORTED_PRESSURE_RANGE, validate_request
 
-BUNDLE_CODE = BUNDLE_ROOT / "code"
-if str(BUNDLE_CODE) not in sys.path:
-    sys.path.insert(0, str(BUNDLE_CODE))
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+MODEL_ROOT = ROOT_DIR / "Model"
+CHECKPOINT_PATH = MODEL_ROOT / "best_model_ModelB.pth"
+SCALER_X_PATH = MODEL_ROOT / "scaler_X.pkl"
+SCALER_Y_PATH = MODEL_ROOT / "scaler_y.pkl"
+SURFACE_PATH = MODEL_ROOT / "mass_smooth_surface.npz"
 
 
 @dataclass
 class LoadedModel:
-    injector_id: str
-    paper_label: str
-    code_model_id: str
     model: Any
-    norm: dict[str, np.ndarray]
-    seq_len: int
-    checkpoint_dir: Path
-    model_label: str
+    scaler_x: Any
+    scaler_y: Any
+    low_res_len: int
+    out_len: int
+    time_us: np.ndarray
+def _build_pdnn_model(torch_mod: Any, hidden: list[int], low_res_len: int) -> Any:
+    class PdnnModel(torch_mod.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.base = torch_mod.nn.Sequential(
+                torch_mod.nn.Linear(2, hidden[0]),
+                torch_mod.nn.ReLU(),
+                torch_mod.nn.Linear(hidden[0], hidden[1]),
+                torch_mod.nn.ReLU(),
+                torch_mod.nn.Linear(hidden[1], hidden[2]),
+                torch_mod.nn.ReLU(),
+                torch_mod.nn.Linear(hidden[2], low_res_len),
+            )
+
+        def forward(self, x: Any) -> Any:  # type: ignore[override]
+            return self.base(x)
+
+    return PdnnModel()
 
 
 class RoiRuntime:
     def __init__(self) -> None:
-        self.bundle_root = BUNDLE_ROOT
-        self.model_selection = MODEL_SELECTION
-        self.supported_conditions = SUPPORTED_CONDITIONS
-        self.time_grid = np.linspace(
-            float(TIME_GRID["grid_start_us"]),
-            float(TIME_GRID["grid_end_us"]),
-            int(TIME_GRID["target_len"]),
-            dtype=np.float32,
-        )
-        self._cache: dict[str, LoadedModel] = {}
-
-    def preload_all(self) -> None:
-        for injector_id in self.model_selection:
-            self._load_model(injector_id)
+        self.model_metadata = MODEL_METADATA
+        self.pressure_range = SUPPORTED_PRESSURE_RANGE
+        self.duration_range = SUPPORTED_DURATION_RANGE
+        self._cache: LoadedModel | None = None
 
     def health_payload(self) -> dict[str, Any]:
         return {
             "status": "ok",
-            "bundle_name": BUNDLE_MANIFEST.get("bundle_name", "unknown"),
-            "loaded_models": sorted(self._cache.keys()),
-            "supported_injectors": sorted(self.model_selection.keys()),
-            "bundle_load_errors": BUNDLE_LOAD_ERRORS,
+            "bundle_name": self.model_metadata["bundle_name"],
+            "model_kind": self.model_metadata["model_kind"],
+            "fixed_context": self.model_metadata["fixed_context"],
+            "supported_pressure_range_bar": list(self.pressure_range),
+            "supported_duration_range_us": list(self.duration_range),
+            "output_points": self.model_metadata["output"]["length"],
+            "bundle_load_errors": self.model_metadata.get("bundle_load_errors", []),
         }
 
     def get_supported_conditions_payload(self) -> dict[str, Any]:
-        from .validators import supported_conditions_payload
+        return {
+            "bundle_name": self.model_metadata["bundle_name"],
+            "purpose": self.model_metadata["purpose"],
+            "fixed_context": self.model_metadata["fixed_context"],
+            "supported_pressure_range_bar": list(self.pressure_range),
+            "supported_duration_range_us": list(self.duration_range),
+            "pressure_grid": self.model_metadata.get("pressure_grid", []),
+            "duration_grid": self.model_metadata.get("duration_grid", []),
+            "output": self.model_metadata["output"],
+            "future_extension_note": self.model_metadata.get("future_extension_note", ""),
+            "bundle_load_errors": self.model_metadata.get("bundle_load_errors", []),
+        }
 
-        return supported_conditions_payload()
+    @staticmethod
+    def _load_scaler(path: Path) -> Any:
+        import joblib
 
-    def _load_norm(self, path: Path) -> dict[str, np.ndarray]:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        out: dict[str, np.ndarray] = {}
-        for key in ("x_mean", "x_std", "y_mean", "y_std"):
-            if key in payload:
-                out[key] = np.asarray(payload[key], dtype=np.float32)
-        return out
+        return joblib.load(path)
 
-    def _load_model(self, injector_id: str) -> LoadedModel:
-        injector_id = str(injector_id)
-        if injector_id in self._cache:
-            return self._cache[injector_id]
+    @staticmethod
+    def _load_torch() -> Any:
+        import torch
 
-        import importlib
+        return torch
 
-        torch = importlib.import_module("torch")
-        from model_defs import build_condition_model  # noqa: WPS433, PLC0415
+    @staticmethod
+    def _catmull_rom_resample(values: np.ndarray, target_len: int) -> np.ndarray:
+        values = np.asarray(values, dtype=np.float32).reshape(-1)
+        if values.size == target_len:
+            return values.copy()
+        if values.size < 2:
+            return np.full(target_len, float(values[0]) if values.size else 0.0, dtype=np.float32)
+        x_new = np.linspace(0.0, float(values.size - 1), target_len, dtype=np.float32)
+        i = np.floor(x_new).astype(np.int32)
+        t = x_new - i
+        i0 = np.clip(i - 1, 0, values.size - 1)
+        i1 = np.clip(i, 0, values.size - 1)
+        i2 = np.clip(i + 1, 0, values.size - 1)
+        i3 = np.clip(i + 2, 0, values.size - 1)
+        p0 = values[i0]
+        p1 = values[i1]
+        p2 = values[i2]
+        p3 = values[i3]
+        out = 0.5 * (
+            (2.0 * p1)
+            + (-p0 + p2) * t
+            + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * (t**2)
+            + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * (t**3)
+        )
+        return out.astype(np.float32)
 
-        meta = self.model_selection[injector_id]
-        checkpoint_dir = self.bundle_root / "models" / f"inj{injector_id}" / meta["paper_label"]
-        cfg = json.loads((checkpoint_dir / "config.json").read_text(encoding="utf-8"))
-        seq_len = int(cfg.get("target_len", self.time_grid.size))
-        model = build_condition_model(str(meta["code_model_id"]), seq_len=seq_len)
-        state = torch.load(checkpoint_dir / "model.pt", map_location="cpu")
-        model.load_state_dict(state)
+    def _load_time_grid(self, out_len: int) -> np.ndarray:
+        surface = np.load(SURFACE_PATH, allow_pickle=True)
+        t_start = float(surface["t_start_s"]) * 1_000_000.0
+        t_end = float(surface["t_end_s"]) * 1_000_000.0
+        dt = float(surface["dt_int_s"]) * 1_000_000.0
+        grid = np.arange(t_start, t_end, dt, dtype=np.float32)
+        if grid.size != out_len:
+            grid = np.linspace(t_start, t_end, out_len, endpoint=False, dtype=np.float32)
+        return grid
+
+    def _load_model(self) -> LoadedModel:
+        if self._cache is not None:
+            return self._cache
+
+        torch = self._load_torch()
+        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu")
+        state_dict = checkpoint["model_state_dict"]
+        hidden = list(checkpoint.get("config", {}).get("hidden", [256, 256, 256]))
+        low_res_len = int(state_dict["base.6.weight"].shape[0])
+        out_len = int(checkpoint.get("config", {}).get("out_len", 7500))
+
+        model = _build_pdnn_model(torch, hidden, low_res_len)
+        model.load_state_dict(state_dict)
         model.eval()
-        norm = self._load_norm(checkpoint_dir / "norm.json")
 
         loaded = LoadedModel(
-            injector_id=injector_id,
-            paper_label=meta["paper_label"],
-            code_model_id=str(meta["code_model_id"]),
             model=model,
-            norm=norm,
-            seq_len=seq_len,
-            checkpoint_dir=checkpoint_dir,
-            model_label=meta["paper_label"],
+            scaler_x=self._load_scaler(SCALER_X_PATH),
+            scaler_y=self._load_scaler(SCALER_Y_PATH),
+            low_res_len=low_res_len,
+            out_len=out_len,
+            time_us=self._load_time_grid(out_len),
         )
-        self._cache[injector_id] = loaded
+        self._cache = loaded
         return loaded
 
     @staticmethod
@@ -107,8 +160,7 @@ class RoiRuntime:
         peak_index = int(np.argmax(y))
         peak_value = float(y[peak_index])
         peak_time = float(t[peak_index])
-        t_ms = t / 1000.0
-        area_mg = float(np.trapz(y, t_ms))
+        area_mg = float(np.trapz(y, t / 1000.0))
         dt_us = float(np.mean(np.diff(t))) if t.size > 1 else 0.0
         half_threshold = peak_value * 0.5
         tenth_threshold = peak_value * 0.1
@@ -123,30 +175,27 @@ class RoiRuntime:
             "mean_roi_mg_per_ms": float(np.mean(y)),
         }
 
-    def predict(self, injector_id: Any, pressure_bar: float, temp_c: float, et_us: float) -> dict[str, Any]:
-        normalized = validate_condition(injector_id, pressure_bar, temp_c, et_us)
-        loaded = self._load_model(normalized["injector_id"])
-        x = np.asarray([normalized["pressure_bar"], normalized["temp_c"], normalized["et_us"]], dtype=np.float32)
-        x = (x - loaded.norm["x_mean"]) / np.maximum(loaded.norm["x_std"], 1e-6)
-        import importlib
+    def predict(self, pressure_bar: float, duration_us: float) -> dict[str, Any]:
+        request = validate_request(pressure_bar, duration_us)
+        loaded = self._load_model()
+        torch = self._load_torch()
 
-        torch = importlib.import_module("torch")
-        x_t = torch.tensor(x, dtype=torch.float32).unsqueeze(0)
+        features = np.array([request["pressure_bar"], math.log(request["duration_us"])], dtype=np.float32)
+        x = loaded.scaler_x.transform(features.reshape(1, -1)).astype(np.float32)
+        x_t = torch.tensor(x, dtype=torch.float32)
 
         with torch.inference_mode():
             pred = loaded.model(x_t)
-            if pred.dim() == 3:
-                pred = pred.squeeze(1)
-            pred = pred * float(loaded.norm["y_std"].reshape(-1)[0]) + float(loaded.norm["y_mean"].reshape(-1)[0])
-            roi = pred.detach().cpu().numpy().reshape(-1)
+            pred = pred.detach().cpu().numpy().reshape(-1, 1)
 
-        summary = self._summarize(self.time_grid, roi)
+        roi_processed = loaded.scaler_y.inverse_transform(pred).reshape(-1)
+        roi_processed = np.maximum(roi_processed, 0.0)
+        roi = self._catmull_rom_resample(roi_processed, loaded.out_len)
+        summary = self._summarize(loaded.time_us, roi)
         return {
-            "injector_id": normalized["injector_id"],
-            "model_label": loaded.paper_label,
-            "model_id": loaded.code_model_id,
-            "input": normalized,
-            "time_us": self.time_grid.tolist(),
+            "fixed_context": self.model_metadata["fixed_context"],
+            "input": request,
+            "time_us": loaded.time_us.tolist(),
             "roi_mg_per_ms": roi.tolist(),
             "summary": summary,
         }
@@ -156,12 +205,7 @@ class RoiRuntime:
         for idx, case in enumerate(cases):
             case_id = case.get("case_id") or case.get("id") or f"case_{idx + 1}"
             try:
-                result = self.predict(
-                    case["injector_id"],
-                    case["pressure_bar"],
-                    case["temp_c"],
-                    case["et_us"],
-                )
+                result = self.predict(case["pressure_bar"], case["duration_us"])
                 results.append({"case_id": case_id, "ok": True, "result": result})
             except Exception as exc:  # noqa: BLE001
                 results.append({"case_id": case_id, "ok": False, "error": str(exc)})

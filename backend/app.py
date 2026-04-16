@@ -14,7 +14,7 @@ from .services.roi_runtime import RoiRuntime
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-app = FastAPI(title="ROI Predictor Webapp", version="0.1.0")
+app = FastAPI(title="ROI Predictor Webapp", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,19 +28,12 @@ runtime = RoiRuntime()
 
 class PredictRequest(BaseModel):
     case_id: str | None = Field(default=None, description="Optional case identifier.")
-    injector_id: str = Field(..., description="Injector id. Supported: 417, 800.")
     pressure_bar: float = Field(..., description="Rail pressure in bar.")
-    temp_c: float = Field(..., description="Fuel temperature in degC.")
-    et_us: float = Field(..., description="Energizing time in microseconds.")
+    duration_us: float = Field(..., description="Injection duration in microseconds.")
 
 
 class BatchPredictRequest(BaseModel):
     cases: list[PredictRequest]
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    return None
 
 
 @app.get("/api/health")
@@ -56,7 +49,7 @@ def supported_conditions() -> dict[str, Any]:
 @app.post("/api/predict")
 def predict(request: PredictRequest) -> dict[str, Any]:
     try:
-        return runtime.predict(request.injector_id, request.pressure_bar, request.temp_c, request.et_us)
+        return runtime.predict(request.pressure_bar, request.duration_us)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

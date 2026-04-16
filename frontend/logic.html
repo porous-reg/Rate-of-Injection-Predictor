@@ -34,48 +34,54 @@
         <div class="eyebrow">Logic</div>
         <h1>How the ROI webapp works</h1>
         <p>
-          The app validates the condition against the supported grid, selects the appropriate checkpoint by injector, runs the bundled runtime, and returns the full waveform plus summary metrics.
+          The app uses a fixed experimental context for injector 800 at 30 C, accepts pressure and duration as the only runtime inputs, runs the bundled PDNN checkpoint, and returns the full ROI waveform with summary metrics.
         </p>
       </section>
 
       <section class="doc-grid">
         <article class="doc-block">
           <h2>1. Input contract</h2>
-          <p>The current runtime accepts four values only:</p>
+          <p>The current release accepts two values only:</p>
           <ul>
-            <li><code>injector_id</code>: 417 or 800</li>
-            <li><code>pressure_bar</code>: rail pressure</li>
-            <li><code>temp_c</code>: fuel temperature</li>
-            <li><code>et_us</code>: energizing time</li>
+            <li><code>pressure_bar</code>: rail pressure in bar</li>
+            <li><code>duration_us</code>: injection duration in microseconds</li>
           </ul>
-          <p>Supported values come from the bundle metadata and are not extrapolated by default.</p>
+          <p>The injector and temperature are fixed in this first version: injector 800 at 30 C.</p>
         </article>
 
         <article class="doc-block">
-          <h2>2. Validation and selection</h2>
+          <h2>2. Validation and fixed context</h2>
           <p>Before prediction, the backend checks:</p>
           <ul>
-            <li>injector id is one of the supported injectors</li>
-            <li>pressure, temperature, and ET match the injector-specific allowed grid</li>
-            <li>the selected injector maps to the proper checkpoint</li>
+            <li>pressure is inside the supported range</li>
+            <li>duration is inside the supported range</li>
+            <li>the model context remains fixed to injector 800 at 30 C</li>
           </ul>
-          <p>This keeps the UI aligned with the training bundle.</p>
+          <p>This keeps the UI aligned with the actual checkpoint and training bundle.</p>
         </article>
 
         <article class="doc-block">
           <h2>3. Runtime path</h2>
           <ol>
-            <li>Load the selected model checkpoint from the copied bundle</li>
-            <li>Normalize the three condition inputs</li>
-            <li>Run the model forward on CPU</li>
-            <li>De-normalize the ROI waveform</li>
+            <li>Load the selected checkpoint from the copied Model folder</li>
+            <li>Transform the inputs using the fitted input scaler</li>
+            <li>Apply the PDNN on CPU</li>
+            <li>Inverse-transform the low-resolution waveform using the fitted output scaler</li>
+            <li>Resample the waveform to the final 7500-point time grid</li>
             <li>Return <code>time_us</code> and <code>roi_mg_per_ms</code></li>
           </ol>
-          <p>The backend caches the model after first load so the next request is faster.</p>
+          <p>The runtime caches the model after first load so the next request is faster.</p>
         </article>
 
         <article class="doc-block">
-          <h2>4. Summary metrics</h2>
+          <h2>4. Internal duration handling</h2>
+          <p>
+            The model uses duration as a continuous variable. Internally it works on the log of duration, which is why the runtime accepts any supported duration value inside the range instead of only a handful of grid points.
+          </p>
+        </article>
+
+        <article class="doc-block">
+          <h2>5. Summary metrics</h2>
           <p>The UI derives simple metrics from the predicted waveform:</p>
           <ul>
             <li>peak ROI value</li>
@@ -86,14 +92,14 @@
         </article>
 
         <article class="doc-block">
-          <h2>5. Batch mode</h2>
-          <p>Batch CSV rows are parsed into the same input contract and passed through the same validation path. Invalid rows are reported individually rather than stopping the whole batch.</p>
+          <h2>6. Batch mode</h2>
+          <p>Batch CSV rows are parsed into the same pressure/duration contract and passed through the same validation path. Invalid rows are reported individually rather than stopping the whole batch.</p>
         </article>
 
         <article class="doc-block highlight">
-          <h2>6. Future geometry-aware extension</h2>
+          <h2>7. Future geometry-aware extension</h2>
           <p>
-            v1 is condition-only. The UI and handoff are intentionally structured so a later version can add geometry-aware inputs such as injector hole count, PCD, or hole pattern without changing the app shell.
+            v1 is fixed-context and pressure-duration only. The UI and handoff are intentionally structured so a later version can add geometry-aware inputs such as injector hole count, PCD, or hole pattern without changing the app shell.
           </p>
         </article>
       </section>

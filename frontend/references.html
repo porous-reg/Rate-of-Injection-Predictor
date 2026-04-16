@@ -34,44 +34,33 @@
         <div class="eyebrow">References</div>
         <h1>Bundle provenance and model mapping</h1>
         <p>
-          This page documents the shipped bundle, the selected checkpoints, and the files that define the supported condition grid.
+          This page documents the shipped checkpoint, the fitted scalers, and the files that define the supported pressure and duration range for the fixed 800 / 30 C release.
         </p>
       </section>
 
       <section class="doc-grid">
         <article class="doc-block full">
-          <h2>Selected models</h2>
+          <h2>Selected model</h2>
           <div class="table-wrap">
             <table class="data-table compact">
               <thead>
                 <tr>
-                  <th>injector</th>
+                  <th>context</th>
                   <th>paper label</th>
                   <th>code model id</th>
-                  <th>split</th>
-                  <th>rmse</th>
-                  <th>mae</th>
-                  <th>r2</th>
+                  <th>checkpoint</th>
+                  <th>pressure range</th>
+                  <th>duration range</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>800</td>
-                  <td>ET-Transformer</td>
-                  <td>TRM_NO_CURRENT</td>
-                  <td>S2_condition_holdout</td>
-                  <td>0.188</td>
-                  <td>0.036</td>
-                  <td>0.9925</td>
-                </tr>
-                <tr>
-                  <td>417</td>
-                  <td>ET-MLP-BayesReg</td>
-                  <td>B_MLP_BayesReg_scalar</td>
-                  <td>S2_condition_holdout</td>
-                  <td>0.1158</td>
-                  <td>0.0274</td>
-                  <td>0.995</td>
+                  <td>Injector 800, 30 C</td>
+                  <td>PDNN</td>
+                  <td>ModelB</td>
+                  <td>best_model_ModelB.pth</td>
+                  <td>100-350 bar</td>
+                  <td>250-3000 us</td>
                 </tr>
               </tbody>
             </table>
@@ -81,35 +70,36 @@
         <article class="doc-block">
           <h2>Bundle files</h2>
           <ul class="ref-list">
-            <li><code>roi_web_bundle_20260413/README.md</code></li>
-            <li><code>roi_web_bundle_20260413/code/predict_roi.py</code></li>
-            <li><code>roi_web_bundle_20260413/code/model_defs.py</code></li>
-            <li><code>roi_web_bundle_20260413/metadata/supported_conditions.json</code></li>
-            <li><code>roi_web_bundle_20260413/metadata/time_grid.json</code></li>
-            <li><code>roi_web_bundle_20260413/metadata/model_selection.json</code></li>
+            <li><code>Model/best_model_ModelB.pth</code></li>
+            <li><code>Model/scaler_X.pkl</code></li>
+            <li><code>Model/scaler_y.pkl</code></li>
+            <li><code>Model/mass_smooth_surface.npz</code></li>
+            <li><code>Model/README.md</code></li>
           </ul>
         </article>
 
         <article class="doc-block">
           <h2>Condition grid</h2>
-          <p>The runtime is intentionally restricted to the supported values in the bundle metadata. That keeps the webapp aligned with the training and evaluation setup.</p>
+          <p>The runtime is intentionally restricted to the supported pressure and duration ranges for the fixed 800 / 30 C context.</p>
           <div class="mini-summary">
-            <div class="summary-row"><strong>Bundle</strong><span>roi_web_bundle_20260413</span></div>
-            <div class="summary-row"><strong>Purpose</strong><span>Condition-only ROI inference bundle for injector 417 and 800 web deployment</span></div>
-            <div class="summary-row"><strong>Time axis</strong><span>us · 1024 points</span></div>
+            <div class="summary-row"><strong>Bundle</strong><span>Model</span></div>
+            <div class="summary-row"><strong>Purpose</strong><span>Pressure-duration ROI inference bundle</span></div>
+            <div class="summary-row"><strong>Fixed context</strong><span>Injector 800 at 30 C</span></div>
+            <div class="summary-row"><strong>Time axis</strong><span>us / 7500 points</span></div>
             <div class="summary-row"><strong>ROI unit</strong><span>mg/ms</span></div>
             <div class="summary-row"><strong>Geometry extension note</strong><span>Future versions may add geometry-aware inputs such as injector hole count or hole pattern.</span></div>
           </div>
           <div class="chips" style="margin-top: 0.85rem;">
-            <span class="chip">Injector 417: 100-350 bar, 30/90 C, ET 250-5000 us</span>
-            <span class="chip">Injector 800: 100-350 bar, 30/90 C, ET 250-5000 us</span>
+            <span class="chip">Pressure: 100-350 bar</span>
+            <span class="chip">Duration: 250-3000 us</span>
+            <span class="chip">Fixed context: Injector 800 / 30 C</span>
           </div>
         </article>
 
         <article class="doc-block highlight">
           <h2>Deployment note</h2>
           <p>
-            The model bundle is condition-only, but the webapp shell is intentionally designed to allow future geometry-aware ROI versions to reuse the same site pattern.
+            The model bundle is fixed-context and pressure-duration only, but the webapp shell is intentionally designed so future geometry-aware ROI versions can reuse the same site pattern.
           </p>
         </article>
       </section>

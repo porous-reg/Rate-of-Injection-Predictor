@@ -1,7 +1,7 @@
-﻿const state = {
+const state = {
   catalog: null,
   loadedSingleRow: null,
-  selectedBatchRows: [],
+  loadedBatchRows: [],
   loadedBatchResults: [],
   lastPrediction: null,
 };
@@ -20,10 +20,8 @@ async function init() {
 
 function cacheUi() {
   const ids = [
-    "injectorSelect",
     "pressureInput",
-    "tempInput",
-    "etInput",
+    "durationInput",
     "apiBaseInput",
     "saveApiBaseButton",
     "clearApiBaseButton",
@@ -64,7 +62,11 @@ function bindTabs() {
 }
 
 function fallbackCatalog() {
-  return window.ROI_FALLBACK_CATALOG || null;
+  return window.ROI_FALLBACK_MODEL || null;
+}
+
+function currentCatalog() {
+  return state.catalog || fallbackCatalog() || {};
 }
 
 function apiBaseCandidates() {
@@ -106,39 +108,22 @@ async function fetchJson(path, options) {
 }
 
 async function initProgramPage() {
+  state.catalog = fallbackCatalog();
   renderSummaryCards(null);
   renderWaveform(null);
   renderBatchPreview([]);
   renderBatchResults([]);
-  if (ui.plotMeta) {
-    ui.plotMeta.textContent = "No prediction yet";
-  }
-
-  state.catalog = fallbackCatalog();
-  if (!state.catalog) {
-    if (ui.supportedConditions) {
-      ui.supportedConditions.innerHTML = `
-        <article class="support-card">
-          <h3>Catalog unavailable</h3>
-          <p class="muted">Fallback catalog is missing.</p>
-        </article>
-      `;
-    }
-    return;
-  }
-
   renderSupportedConditions();
-  populateSelectors();
-  setDemoDefaults();
+  syncInputBounds();
   syncApiBaseField();
   bindProgramActions();
+  setDemoDefaults(false);
 
   try {
     const liveCatalog = await fetchJson("/api/supported-conditions");
     state.catalog = liveCatalog;
     renderSupportedConditions();
-    populateSelectors();
-    setDemoDefaults();
+    syncInputBounds();
     syncApiBaseField();
     if (ui.plotMeta) {
       ui.plotMeta.textContent = "Backend connected";
@@ -151,49 +136,38 @@ async function initProgramPage() {
   }
 }
 
-function populateSelectors() {
-  const catalog = state.catalog.supported_conditions;
-  const injectorIds = Object.keys(catalog).sort();
-  ui.injectorSelect.innerHTML = injectorIds.map((id) => `<option value="${id}">Injector ${id}</option>`).join("");
-  ui.injectorSelect.value = injectorIds.includes("800") ? "800" : injectorIds[0];
-  updateInputHints(ui.injectorSelect.value);
+function getRanges() {
+  const catalog = currentCatalog();
+  const pressure = catalog.supported_pressure_range_bar || [100, 350];
+  const duration = catalog.supported_duration_range_us || [250, 3000];
+  const fixedContext = catalog.fixed_context || { injector_id: "800", temp_c: 30.0 };
+  return { pressure, duration, fixedContext };
 }
 
-function updateInputHints(injectorId) {
-  const grid = state.catalog.supported_conditions[injectorId];
-  if (!grid) return;
-  const pressureMin = Math.min(...grid.pressure_bar);
-  const pressureMax = Math.max(...grid.pressure_bar);
-  const tempMin = Math.min(...grid.temp_c);
-  const tempMax = Math.max(...grid.temp_c);
-  const etMin = Math.min(...grid.et_us);
-  const etMax = Math.max(...grid.et_us);
-
-  ui.pressureInput.min = pressureMin;
-  ui.pressureInput.max = pressureMax;
-  ui.tempInput.min = tempMin;
-  ui.tempInput.max = tempMax;
-  ui.etInput.min = etMin;
-  ui.etInput.max = etMax;
-
-  ui.pressureInput.placeholder = `${pressureMin}-${pressureMax}`;
-  ui.tempInput.placeholder = `${tempMin}-${tempMax}`;
-  ui.etInput.placeholder = `${etMin}-${etMax} (continuous)`;
+function syncInputBounds() {
+  const { pressure, duration } = getRanges();
+  if (ui.pressureInput) {
+    ui.pressureInput.min = String(pressure[0]);
+    ui.pressureInput.max = String(pressure[1]);
+    ui.pressureInput.placeholder = `${pressure[0]}-${pressure[1]}`;
+  }
+  if (ui.durationInput) {
+    ui.durationInput.min = String(duration[0]);
+    ui.durationInput.max = String(duration[1]);
+    ui.durationInput.placeholder = `${duration[0]}-${duration[1]}`;
+  }
 }
 
-function setDemoDefaults() {
-  ui.injectorSelect.value = "800";
-  updateInputHints(ui.injectorSelect.value);
-  ui.pressureInput.value = "200";
-  ui.tempInput.value = "30";
-  ui.etInput.value = "700";
+function setDemoDefaults(runPreview = false) {
+  syncInputBounds();
+  if (ui.pressureInput) ui.pressureInput.value = "200";
+  if (ui.durationInput) ui.durationInput.value = "700";
+  if (runPreview) {
+    void runSinglePrediction();
+  }
 }
 
 function bindProgramActions() {
-  ui.injectorSelect.addEventListener("change", () => {
-    updateInputHints(ui.injectorSelect.value);
-  });
-
   if (ui.saveApiBaseButton) {
     ui.saveApiBaseButton.addEventListener("click", () => {
       const base = (ui.apiBaseInput?.value || "").trim();
@@ -219,12 +193,12 @@ function bindProgramActions() {
   }
 
   ui.demoButton.addEventListener("click", () => {
-    setDemoDefaults();
-    void runSinglePrediction();
+    setDemoDefaults(true);
   });
 
   ui.resetButton.addEventListener("click", () => {
-    setDemoDefaults();
+    setDemoDefaults(false);
+    state.lastPrediction = null;
     renderSummaryCards(null);
     renderWaveform(null);
     if (ui.plotMeta) ui.plotMeta.textContent = "No prediction yet";
@@ -253,136 +227,204 @@ function syncApiBaseField() {
   }
 }
 
-async function runSinglePrediction() {
-  const payload = currentPayloadFromForm();
-  try {
-    const result = await fetchJson("/api/predict", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    state.lastPrediction = result;
-    renderSummaryCards(result);
-    renderWaveform(result);
-    if (ui.plotMeta) ui.plotMeta.textContent = `Injector ${result.injector_id}`;
-  } catch (error) {
-    showToast(formatBackendError(error));
-  }
-}
-
-function currentPayloadFromForm() {
-  return {
-    injector_id: ui.injectorSelect.value,
-    pressure_bar: Number(ui.pressureInput.value),
-    temp_c: Number(ui.tempInput.value),
-    et_us: Number(ui.etInput.value),
-  };
-}
-
 function renderSummaryCards(result) {
+  const { fixedContext } = getRanges();
   if (!ui.summaryCards) return;
-  if (!result) {
-    ui.summaryCards.innerHTML = [
-      summaryCard("Injector", "—", "Waiting for a prediction."),
-      summaryCard("Peak ROI", "—", "Waiting for a prediction."),
-      summaryCard("Peak time", "—", "Waiting for a prediction."),
-      summaryCard("Integral", "—", "Waiting for a prediction."),
-    ].join("");
-    return;
-  }
-  ui.summaryCards.innerHTML = [
-    summaryCard("Injector", result.injector_id, "Selected condition set"),
-    summaryCard("Peak ROI", formatNumber(result.summary.peak_roi_mg_per_ms), `Mean ${formatNumber(result.summary.mean_roi_mg_per_ms)}`),
-    summaryCard("Peak time", `${formatNumber(result.summary.peak_time_us)} us`, `Half-peak duration ${formatNumber(result.summary.duration_above_half_peak_us)} us`),
-    summaryCard("Integral", formatNumber(result.summary.roi_area_mg), `10% duration ${formatNumber(result.summary.duration_above_10pct_peak_us)} us`),
-  ].join("");
-}
 
-function summaryCard(label, value, detail) {
-  return `
-    <article class="metric-card">
-      <div class="label">${label}</div>
-      <div class="value">${value}</div>
-      <div class="detail">${detail}</div>
-    </article>
-  `;
+  const cards = result
+    ? [
+        {
+          label: "Fixed context",
+          value: `Injector ${fixedContext.injector_id} / ${formatNumber(fixedContext.temp_c, 0)} C`,
+          detail: "This release is fixed to the 800 injector and 30 C experiment context.",
+        },
+        {
+          label: "Input",
+          value: `${formatNumber(result.input.pressure_bar, 0)} bar`,
+          detail: `Duration ${formatNumber(result.input.duration_us, 0)} us`,
+        },
+        {
+          label: "Peak ROI",
+          value: `${formatNumber(result.summary.peak_roi_mg_per_ms, 3)} mg/ms`,
+          detail: `Peak at ${formatNumber(result.summary.peak_time_us, 1)} us`,
+        },
+        {
+          label: "Waveform area",
+          value: `${formatNumber(result.summary.roi_area_mg, 3)} mg`,
+          detail: `Mean ${formatNumber(result.summary.mean_roi_mg_per_ms, 3)} mg/ms`,
+        },
+      ]
+    : [
+        {
+          label: "Fixed context",
+          value: `Injector ${fixedContext.injector_id} / ${formatNumber(fixedContext.temp_c, 0)} C`,
+          detail: "Pressure and duration are the only runtime inputs in this release.",
+        },
+        {
+          label: "Input",
+          value: "Pressure + duration",
+          detail: "Choose a pressure and an injection duration within the supported range.",
+        },
+        {
+          label: "Output",
+          value: "ROI waveform",
+          detail: "The backend returns the full waveform and summary metrics.",
+        },
+        {
+          label: "Future extension",
+          value: "Geometry later",
+          detail: "Hole count, hole pattern, and other geometry-aware fields will be added later.",
+        },
+      ];
+
+  ui.summaryCards.innerHTML = cards
+    .map(
+      (card) => `
+        <article class="metric-card">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="value">${escapeHtml(card.value)}</div>
+          <div class="detail">${escapeHtml(card.detail)}</div>
+        </article>
+      `,
+    )
+    .join("");
 }
 
 function renderWaveform(result) {
   if (!ui.waveformPlot) return;
-  if (typeof Plotly === "undefined") {
-    ui.waveformPlot.innerHTML = `
-      <div class="empty-state">
-        <strong>Plot library unavailable</strong>
-        <div>Load the local Plotly bundle to render the ROI waveform.</div>
-      </div>
-    `;
-    return;
-  }
-
   if (!result) {
-    Plotly.newPlot(
-      ui.waveformPlot,
-      [{ x: [0, 1], y: [0, 0], mode: "lines", line: { color: "#6fe3c2", width: 2 }, hoverinfo: "skip", name: "ROI" }],
-      plotLayout("Waiting for a prediction"),
-      { displayModeBar: false, responsive: true }
-    );
+    ui.waveformPlot.innerHTML = '<div class="empty-state" style="min-height: 320px; display: grid; place-items: center;">No prediction yet. Load the demo or run a case to render the waveform.</div>';
+    return;
+  }
+  if (!window.Plotly) {
+    ui.waveformPlot.innerHTML = '<div class="empty-state">Plotly is unavailable.</div>';
     return;
   }
 
-  const x = result.time_us;
-  const y = result.roi_mg_per_ms;
-  const peakIndex = y.indexOf(Math.max(...y));
-  const peakTrace = {
-    x: [x[peakIndex]],
-    y: [y[peakIndex]],
-    mode: "markers",
-    marker: { color: "#ffcf6b", size: 10 },
-    name: "Peak",
-    hovertemplate: "Peak<br>%{x:.1f} us<br>%{y:.4f} mg/ms<extra></extra>",
+  const time = result.time_us || [];
+  const roi = result.roi_mg_per_ms || [];
+  const trace = {
+    x: time,
+    y: roi,
+    type: "scatter",
+    mode: "lines",
+    line: { color: "#6fe3c2", width: 2.8 },
+    fill: "tozeroy",
+    fillcolor: "rgba(111, 227, 194, 0.08)",
+    hovertemplate: "t=%{x:.0f} us<br>ROI=%{y:.3f} mg/ms<extra></extra>",
   };
-
-  Plotly.newPlot(
-    ui.waveformPlot,
-    [
-      {
-        x,
-        y,
-        mode: "lines",
-        line: { color: "#6fe3c2", width: 2.5 },
-        fill: "tozeroy",
-        fillcolor: "rgba(111, 227, 194, 0.10)",
-        hovertemplate: "t=%{x:.1f} us<br>ROI=%{y:.4f} mg/ms<extra></extra>",
-        name: "ROI",
-      },
-      peakTrace,
-    ],
-    plotLayout(`Injector ${result.injector_id}`),
-    { displayModeBar: true, responsive: true }
-  );
-}
-
-function plotLayout(title) {
-  return {
-    title: { text: title, font: { color: "#ecf2f8", size: 14 } },
+  const layout = {
+    margin: { l: 62, r: 24, t: 16, b: 56 },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
-    margin: { l: 54, r: 22, t: 32, b: 48 },
+    font: { color: "#ecf2f8", family: "Inter, system-ui, sans-serif" },
     xaxis: {
-      title: { text: "Time [us]", font: { color: "#97a6b9" } },
+      title: "Time [us]",
       gridcolor: "rgba(255,255,255,0.08)",
-      zerolinecolor: "rgba(255,255,255,0.12)",
-      color: "#cfe0ee",
+      zerolinecolor: "rgba(255,255,255,0.15)",
+      tickfont: { color: "#97a6b9" },
     },
     yaxis: {
-      title: { text: "ROI [mg/ms]", font: { color: "#97a6b9" } },
+      title: "ROI [mg/ms]",
       gridcolor: "rgba(255,255,255,0.08)",
-      zerolinecolor: "rgba(255,255,255,0.12)",
-      color: "#cfe0ee",
+      zerolinecolor: "rgba(255,255,255,0.15)",
+      tickfont: { color: "#97a6b9" },
     },
-    font: { family: "Inter, sans-serif", color: "#ecf2f8" },
     showlegend: false,
   };
+  const config = {
+    responsive: true,
+    displaylogo: false,
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+  };
+  window.Plotly.newPlot(ui.waveformPlot, [trace], layout, config);
+}
+
+function renderSupportedConditions() {
+  const root = ui.supportedConditions;
+  if (!root) return;
+  const catalog = currentCatalog();
+  const { fixedContext, pressure, duration } = getRanges();
+  const futureExtension = catalog.future_extension_note || "Geometry-aware inputs such as injector hole count will be added later.";
+
+  root.innerHTML = [
+    {
+      title: "Fixed context",
+      body: `Injector ${fixedContext.injector_id} at ${formatNumber(fixedContext.temp_c, 0)} C is fixed in this release.`,
+    },
+    {
+      title: "Pressure range",
+      body: `${formatNumber(pressure[0], 0)} to ${formatNumber(pressure[1], 0)} bar`,
+    },
+    {
+      title: "Duration range",
+      body: `${formatNumber(duration[0], 0)} to ${formatNumber(duration[1], 0)} us`,
+    },
+    {
+      title: "Future extension",
+      body: futureExtension,
+    },
+  ]
+    .map(
+      (card) => `
+        <article class="support-card">
+          <h3>${escapeHtml(card.title)}</h3>
+          <p class="muted">${escapeHtml(card.body)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function currentPayloadFromForm() {
+  return {
+    pressure_bar: Number(ui.pressureInput.value),
+    duration_us: Number(ui.durationInput.value),
+  };
+}
+
+function validateCurrentPayload(payload) {
+  const { pressure, duration } = getRanges();
+  const pressureValue = Number(payload.pressure_bar);
+  const durationValue = Number(payload.duration_us);
+  const problems = [];
+  if (!Number.isFinite(pressureValue)) problems.push("Pressure must be a number.");
+  if (!Number.isFinite(durationValue)) problems.push("Duration must be a number.");
+  if (pressureValue < pressure[0] || pressureValue > pressure[1]) {
+    problems.push(`Pressure must be between ${pressure[0]} and ${pressure[1]} bar.`);
+  }
+  if (durationValue < duration[0] || durationValue > duration[1]) {
+    problems.push(`Duration must be between ${duration[0]} and ${duration[1]} us.`);
+  }
+  if (problems.length) {
+    throw new Error(problems.join(" "));
+  }
+  return { pressure_bar: pressureValue, duration_us: durationValue };
+}
+
+async function runSinglePrediction() {
+  const payload = currentPayloadFromForm();
+  try {
+    const cleanPayload = validateCurrentPayload(payload);
+    const result = await fetchJson("/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cleanPayload),
+    });
+    state.lastPrediction = result;
+    renderSummaryCards(result);
+    renderWaveform(result);
+    if (ui.plotMeta) {
+      ui.plotMeta.textContent = `Pressure ${formatNumber(result.input.pressure_bar, 0)} bar / duration ${formatNumber(result.input.duration_us, 0)} us`;
+    }
+    showToast("Prediction complete.");
+  } catch (error) {
+    console.error(error);
+    if (ui.plotMeta) {
+      ui.plotMeta.textContent = `Request failed: ${error.message}`;
+    }
+    showToast(error.message, true);
+  }
 }
 
 async function handleSingleCsvInput() {
@@ -392,23 +434,21 @@ async function handleSingleCsvInput() {
     return;
   }
   ui.singleCsvName.textContent = file.name;
-  const rows = parseCsv(await file.text());
+  const text = await file.text();
+  const rows = parseCsvRows(text);
   state.loadedSingleRow = rows[0] || null;
-  if (!state.loadedSingleRow) showToast("The CSV does not contain a valid row.");
+  showToast(state.loadedSingleRow ? "Single row loaded." : "No usable row found.", !state.loadedSingleRow);
 }
 
 function applyLoadedSingleCsv() {
-  if (!state.loadedSingleRow) {
-    showToast("Load a one-row CSV first.");
+  const row = state.loadedSingleRow;
+  if (!row) {
+    showToast("Load a CSV row first.", true);
     return;
   }
-  const row = state.loadedSingleRow;
-  ui.injectorSelect.value = String(row.injector_id);
-  updateInputHints(ui.injectorSelect.value);
   ui.pressureInput.value = String(row.pressure_bar);
-  ui.tempInput.value = String(row.temp_c);
-  ui.etInput.value = String(row.et_us);
-  showToast(`Applied ${row.injector_id} row.`);
+  ui.durationInput.value = String(row.duration_us);
+  showToast(`Applied ${row.case_id}.`);
 }
 
 async function handleBatchCsvInput() {
@@ -418,76 +458,77 @@ async function handleBatchCsvInput() {
     return;
   }
   ui.batchCsvName.textContent = file.name;
+  const text = await file.text();
+  state.loadedBatchRows = parseCsvRows(text);
+  renderBatchPreview(state.loadedBatchRows);
+  updateBatchStatus();
+  showToast(state.loadedBatchRows.length ? `Loaded ${state.loadedBatchRows.length} batch row(s).` : "No usable batch rows found.", !state.loadedBatchRows.length);
 }
 
-async function parseBatchInput() {
-  const file = ui.batchCsvInput.files?.[0];
-  if (!file) {
-    showToast("Choose a batch CSV first.");
+function parseBatchInput() {
+  if (!state.loadedBatchRows.length) {
+    showToast("Load a batch CSV first.", true);
     return;
   }
-  const text = await file.text();
-  state.selectedBatchRows = parseCsv(text).map((row, idx) => ({
-    case_id: row.case_id || row.id || `case_${idx + 1}`,
-    injector_id: String(row.injector_id),
-    pressure_bar: Number(row.pressure_bar),
-    temp_c: Number(row.temp_c),
-    et_us: Number(row.et_us),
-  }));
-  renderBatchPreview(state.selectedBatchRows);
-  if (ui.batchStatus) ui.batchStatus.textContent = `${state.selectedBatchRows.length} row(s) loaded`;
+  renderBatchPreview(state.loadedBatchRows);
+  updateBatchStatus();
 }
 
 async function runBatchPrediction() {
-  if (!state.selectedBatchRows.length) {
-    showToast("Load a batch CSV first.");
+  if (!state.loadedBatchRows.length) {
+    showToast("Load a batch CSV first.", true);
     return;
   }
+  const cases = state.loadedBatchRows.map((row, idx) => ({
+    case_id: row.case_id || `case_${idx + 1}`,
+    pressure_bar: row.pressure_bar,
+    duration_us: row.duration_us,
+  }));
   try {
-    const response = await fetchJson("/api/predict-batch", {
+    const result = await fetchJson("/api/predict-batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cases: state.selectedBatchRows }),
+      body: JSON.stringify({ cases }),
     });
-    state.loadedBatchResults = response.results || [];
+    state.loadedBatchResults = result.results || [];
     renderBatchResults(state.loadedBatchResults);
-    if (ui.batchStatus) ui.batchStatus.textContent = `${state.loadedBatchResults.length} result(s) returned`;
+    updateBatchStatus();
+    showToast(`Batch complete: ${state.loadedBatchResults.length} row(s).`);
   } catch (error) {
-    showToast(formatBackendError(error));
+    console.error(error);
+    showToast(error.message, true);
   }
 }
 
 function renderBatchPreview(rows) {
   if (!ui.batchPreviewBody) return;
   if (!rows.length) {
-    ui.batchPreviewBody.innerHTML = '<tr><td colspan="7" class="empty-state">Load a batch CSV to preview rows.</td></tr>';
+    ui.batchPreviewBody.innerHTML = '<tr><td colspan="5" class="empty-state">Load a batch CSV to preview rows.</td></tr>';
     return;
   }
+  const { pressure, duration } = getRanges();
   ui.batchPreviewBody.innerHTML = rows
-    .map((row, index) => {
-      const validation = validateRowClientSide(row);
+    .map((row, idx) => {
+      const status = rowStatus(row, pressure, duration);
       return `
         <tr>
-          <td>${escapeHtml(row.case_id)}</td>
-          <td>${escapeHtml(row.injector_id)}</td>
+          <td>${escapeHtml(row.case_id || `case_${idx + 1}`)}</td>
           <td>${formatNumber(row.pressure_bar)}</td>
-          <td>${formatNumber(row.temp_c)}</td>
-          <td>${formatNumber(row.et_us)}</td>
-          <td>${validation.ok ? "ready" : `<span style="color: var(--error)">${escapeHtml(validation.message)}</span>`}</td>
-          <td><button class="ghost" data-use-row="${index}">Use</button></td>
+          <td>${formatNumber(row.duration_us)}</td>
+          <td>${escapeHtml(status)}</td>
+          <td><button class="ghost" data-use-row="${idx}">Apply</button></td>
         </tr>
       `;
     })
     .join("");
   ui.batchPreviewBody.querySelectorAll("[data-use-row]").forEach((button) => {
     button.addEventListener("click", () => {
-      const row = rows[Number(button.dataset.useRow)];
-      ui.injectorSelect.value = String(row.injector_id);
-      updateInputHints(ui.injectorSelect.value);
+      const index = Number(button.getAttribute("data-use-row"));
+      const row = rows[index];
+      if (!row) return;
       ui.pressureInput.value = String(row.pressure_bar);
-      ui.tempInput.value = String(row.temp_c);
-      ui.etInput.value = String(row.et_us);
-      showToast(`Applied ${row.case_id}.`);
+      ui.durationInput.value = String(row.duration_us);
+      showToast(`Applied ${row.case_id || `case_${index + 1}`}.`);
     });
   });
 }
@@ -495,19 +536,19 @@ function renderBatchPreview(rows) {
 function renderBatchResults(results) {
   if (!ui.batchResultsBody) return;
   if (!results.length) {
-    ui.batchResultsBody.innerHTML = '<tr><td colspan="7" class="empty-state">No batch results yet.</td></tr>';
+    ui.batchResultsBody.innerHTML = '<tr><td colspan="8" class="empty-state">No batch results yet.</td></tr>';
     return;
   }
   ui.batchResultsBody.innerHTML = results
-    .map((entry, index) => {
+    .map((entry) => {
       if (!entry.ok) {
         return `
           <tr>
             <td>${escapeHtml(entry.case_id)}</td>
-            <td>—</td>
-            <td colspan="3" style="color: var(--error)">${escapeHtml(entry.error)}</td>
-            <td>failed</td>
-            <td><button class="ghost" disabled>View</button></td>
+            <td colspan="2">-</td>
+            <td colspan="3">${escapeHtml(entry.error || "Error")}</td>
+            <td><span class="chip">failed</span></td>
+            <td>-</td>
           </tr>
         `;
       }
@@ -515,112 +556,137 @@ function renderBatchResults(results) {
       return `
         <tr>
           <td>${escapeHtml(entry.case_id)}</td>
-          <td>${escapeHtml(result.injector_id)}</td>
-          <td>${formatNumber(result.summary.peak_roi_mg_per_ms)}</td>
-          <td>${formatNumber(result.summary.peak_time_us)}</td>
-          <td>${formatNumber(result.summary.roi_area_mg)}</td>
-          <td>ok</td>
-          <td><button class="ghost" data-view-result="${index}">View</button></td>
+          <td>${formatNumber(result.input.pressure_bar)}</td>
+          <td>${formatNumber(result.input.duration_us)}</td>
+          <td>${formatNumber(result.summary.peak_roi_mg_per_ms, 3)}</td>
+          <td>${formatNumber(result.summary.peak_time_us, 1)}</td>
+          <td>${formatNumber(result.summary.roi_area_mg, 3)}</td>
+          <td><span class="chip">ok</span></td>
+          <td><button class="ghost" data-view-result="${escapeAttr(entry.case_id)}">View</button></td>
         </tr>
       `;
     })
     .join("");
+
   ui.batchResultsBody.querySelectorAll("[data-view-result]").forEach((button) => {
     button.addEventListener("click", () => {
-      const entry = results[Number(button.dataset.viewResult)];
-      if (entry?.ok) {
-        state.lastPrediction = entry.result;
-        renderSummaryCards(entry.result);
-        renderWaveform(entry.result);
-        if (ui.plotMeta) ui.plotMeta.textContent = `Batch case ${entry.case_id}`;
+      const caseId = button.getAttribute("data-view-result");
+      const entry = results.find((item) => item.case_id === caseId && item.ok);
+      if (!entry) return;
+      state.lastPrediction = entry.result;
+      renderSummaryCards(entry.result);
+      renderWaveform(entry.result);
+      if (ui.plotMeta) {
+        ui.plotMeta.textContent = `Batch case ${caseId}`;
       }
+      ui.pressureInput.value = String(entry.result.input.pressure_bar);
+      ui.durationInput.value = String(entry.result.input.duration_us);
     });
   });
 }
 
-function validateRowClientSide(row) {
-  const catalog = state.catalog.supported_conditions[String(row.injector_id)];
-  if (!catalog) return { ok: false, message: "unsupported injector" };
-  const etMin = Math.min(...catalog.et_us);
-  const etMax = Math.max(...catalog.et_us);
-  const checks = [
-    catalog.pressure_bar.includes(Number(row.pressure_bar)),
-    catalog.temp_c.includes(Number(row.temp_c)),
-    Number(row.et_us) >= etMin && Number(row.et_us) <= etMax,
-  ];
-  if (checks.every(Boolean)) return { ok: true, message: "ready" };
-  return { ok: false, message: "outside supported range" };
+function updateBatchStatus() {
+  if (!ui.batchStatus) return;
+  const rowCount = state.loadedBatchRows.length;
+  const resultCount = state.loadedBatchResults.length;
+  const allReady = rowCount > 0 && state.loadedBatchRows.every((row) => rowStatus(row, ...getRangesForStatus()).startsWith("Ready"));
+  if (!rowCount) {
+    ui.batchStatus.textContent = "No batch loaded";
+    return;
+  }
+  if (resultCount) {
+    ui.batchStatus.textContent = `${resultCount} prediction(s) finished`;
+    return;
+  }
+  ui.batchStatus.textContent = `${rowCount} row(s) loaded${allReady ? "" : " - some rows need attention"}`;
 }
 
-function renderSupportedConditions() {
-  const root = ui.supportedConditions;
-  root.innerHTML = Object.entries(state.catalog.supported_conditions)
-    .map(([injectorId, grid]) => {
-      return `
-        <article class="support-card">
-          <h3>Injector ${injectorId}</h3>
-          <div class="chips">
-            <span class="chip">Pressure: ${grid.pressure_bar.join(", ")} bar</span>
-            <span class="chip">Temp: ${grid.temp_c.join(", ")} degC</span>
-            <span class="chip">ET range: ${Math.min(...grid.et_us)} - ${Math.max(...grid.et_us)} us</span>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+function getRangesForStatus() {
+  const { pressure, duration } = getRanges();
+  return [pressure, duration];
 }
 
-function parseCsv(text) {
-  const lines = text.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+function rowStatus(row, pressureRange, durationRange) {
+  const pressure = Number(row.pressure_bar);
+  const duration = Number(row.duration_us);
+  if (!Number.isFinite(pressure) || !Number.isFinite(duration)) {
+    return "Missing pressure or duration";
+  }
+  if (pressure < pressureRange[0] || pressure > pressureRange[1]) {
+    return `Pressure out of range (${pressureRange[0]}-${pressureRange[1]} bar)`;
+  }
+  if (duration < durationRange[0] || duration > durationRange[1]) {
+    return `Duration out of range (${durationRange[0]}-${durationRange[1]} us)`;
+  }
+  return "Ready";
+}
+
+function parseCsvRows(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
   if (!lines.length) return [];
-  const headers = splitCsvLine(lines[0]).map((header) => header.trim().toLowerCase());
-  return lines.slice(1).map((line) => {
+
+  const first = splitCsvLine(lines[0]);
+  const hasHeader = first.some((token) => /pressure|duration|case/i.test(token));
+
+  if (hasHeader) {
+    const headers = first.map(normalizeHeader);
+    return lines.slice(1).map((line, idx) => normalizeCsvRow(headers, splitCsvLine(line), idx));
+  }
+
+  return lines.map((line, idx) => {
     const values = splitCsvLine(line);
-    const row = {};
-    headers.forEach((header, index) => {
-      row[header] = values[index] ?? "";
-    });
-    return row;
+    if (values.length >= 2) {
+      return normalizeCsvRow(["pressure_bar", "duration_us"], values, idx);
+    }
+    return normalizeCsvRow(["pressure_bar", "duration_us"], values, idx);
   });
+}
+
+function normalizeCsvRow(headers, values, idx) {
+  const raw = {};
+  headers.forEach((header, i) => {
+    raw[header] = values[i] ?? "";
+  });
+  const caseId = raw.case_id || raw.id || raw.name || `case_${idx + 1}`;
+  const pressure = toNumber(raw.pressure_bar ?? raw.pressure ?? raw.pressure_bar_bar);
+  const duration = toNumber(raw.duration_us ?? raw.duration ?? raw.et_us);
+  return {
+    case_id: caseId,
+    pressure_bar: pressure,
+    duration_us: duration,
+  };
 }
 
 function splitCsvLine(line) {
-  const result = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  result.push(current);
-  return result;
+  return String(line)
+    .split(",")
+    .map((part) => part.trim());
 }
 
-function formatNumber(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+function normalizeHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+function toNumber(value) {
   const num = Number(value);
-  if (Math.abs(num) >= 100) return num.toFixed(1);
-  if (Math.abs(num) >= 10) return num.toFixed(2);
-  if (Math.abs(num) >= 1) return num.toFixed(3);
-  return num.toFixed(4);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+function formatNumber(value, digits = 2) {
+  if (!Number.isFinite(Number(value))) {
+    return "-";
+  }
+  return Number(value).toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -628,17 +694,14 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function showToast(message) {
-  console.log(message);
-  if (ui.plotMeta) {
-    ui.plotMeta.textContent = message;
-  }
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#96;");
 }
 
-function formatBackendError(error) {
-  const message = error?.message || "Request failed";
-  if (/failed to fetch|networkerror|network/i.test(message)) {
-    return "Backend unreachable. Save a backend URL or start the FastAPI server.";
+function showToast(message, isError = false) {
+  if (!message) return;
+  if (ui.batchStatus) {
+    ui.batchStatus.textContent = message;
+    ui.batchStatus.classList.toggle("error", Boolean(isError));
   }
-  return message;
 }

@@ -1,3 +1,2 @@
-injector_id,pressure_bar,temp_c,et_us
-800,200,30,700
-
+pressure_bar,duration_us
+200,700

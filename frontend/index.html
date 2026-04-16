@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ROI Predictor</title>
-    <meta name="description" content="ROI Predictor webapp for condition-only waveform inference." />
+    <meta name="description" content="ROI Predictor webapp for fixed-context waveform inference." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -37,24 +37,18 @@
       <aside class="rail">
         <section class="rail-block">
           <div class="eyebrow">Prediction inputs</div>
-          <h2>Condition-only runtime</h2>
+          <h2>Fixed-context runtime</h2>
           <p class="muted">
-            This v1 workflow uses injector id, rail pressure, fuel temperature, and energizing time.
+            This v1 model is trained for injector 800 at 30 C. The runtime uses rail pressure and injection duration as continuous inputs.
           </p>
         </section>
 
         <section class="panel">
-          <label for="injectorSelect">Injector</label>
-          <select id="injectorSelect"></select>
-
           <label for="pressureInput">Rail pressure [bar]</label>
           <input id="pressureInput" type="number" step="1" inputmode="numeric" />
 
-          <label for="tempInput">Fuel temperature [degC]</label>
-          <input id="tempInput" type="number" step="1" inputmode="numeric" />
-
-          <label for="etInput">Energizing time [us]</label>
-          <input id="etInput" type="number" step="1" inputmode="numeric" />
+          <label for="durationInput">Injection duration [us]</label>
+          <input id="durationInput" type="number" step="1" inputmode="numeric" />
 
           <div class="row-actions">
             <button id="demoButton" class="secondary">Load demo</button>
@@ -80,7 +74,7 @@
             <button id="applySingleCsvButton" class="ghost">Apply row</button>
           </div>
           <p class="note">
-            Use a CSV with headers: <code>injector_id,pressure_bar,temp_c,et_us</code>.
+            Use a CSV with headers: <code>pressure_bar,duration_us</code>. The fixed injector and temperature are handled by the runtime.
           </p>
         </section>
 
@@ -102,7 +96,7 @@
           </div>
           <button id="runBatchButton" class="primary">Run batch</button>
           <p class="note">
-            Batch rows may include <code>case_id</code>. If omitted, the app assigns one.
+            Batch rows may include <code>case_id</code>. If omitted, the app assigns one. Use <code>pressure_bar,duration_us</code> rows.
           </p>
         </section>
 
@@ -133,7 +127,7 @@
         <section class="panel small-note">
           <div class="eyebrow">Future extension</div>
           <p>
-            This version is condition-only. Geometry-aware inputs such as injector hole count are reserved for a later release.
+            This version is fixed to injector 800 at 30 C. Geometry-aware inputs such as injector hole count, additional condition families, and later temperature variants are reserved for a later release.
           </p>
         </section>
       </aside>
@@ -142,20 +136,20 @@
         <section class="hero-panel">
           <div class="hero-copy">
             <div class="eyebrow">Waveform inference</div>
-            <h1>Predict ROI waveform from operating conditions.</h1>
+            <h1>Predict ROI waveform from pressure and duration.</h1>
             <p>
-              Select an injector, enter pressure, temperature, and energizing time directly, and the runtime returns the full ROI waveform with summary metrics.
+              This release keeps the experiment context fixed: injector 800 at 30 C. Enter rail pressure and injection duration directly, and the runtime returns the full ROI waveform with summary metrics.
             </p>
           </div>
           <div class="hero-visual" aria-hidden="true">
             <div class="signal-card">
               <div class="signal-label">Input</div>
-              <div class="signal-value">Condition set</div>
+              <div class="signal-value">Pressure + duration</div>
             </div>
             <div class="signal-arrow">→</div>
             <div class="signal-card accent">
               <div class="signal-label">Runtime</div>
-              <div class="signal-value">Ready</div>
+              <div class="signal-value">800 @ 30 C</div>
             </div>
             <div class="signal-arrow">→</div>
             <div class="signal-card">
@@ -191,17 +185,15 @@
               <thead>
                 <tr>
                   <th>case_id</th>
-                  <th>injector</th>
                   <th>pressure_bar</th>
-                  <th>temp_c</th>
-                  <th>et_us</th>
+                  <th>duration_us</th>
                   <th>status</th>
                   <th>action</th>
                 </tr>
               </thead>
               <tbody id="batchPreviewBody">
                 <tr>
-                  <td colspan="7" class="empty-state">Load a batch CSV to preview rows.</td>
+                  <td colspan="5" class="empty-state">Load a batch CSV to preview rows.</td>
                 </tr>
               </tbody>
             </table>
@@ -220,7 +212,8 @@
               <thead>
                 <tr>
                   <th>case_id</th>
-                  <th>injector</th>
+                  <th>pressure_bar</th>
+                  <th>duration_us</th>
                   <th>peak_roi</th>
                   <th>peak_time_us</th>
                   <th>roi_area_mg</th>
@@ -230,7 +223,7 @@
               </thead>
               <tbody id="batchResultsBody">
                 <tr>
-                  <td colspan="7" class="empty-state">No batch results yet.</td>
+                  <td colspan="8" class="empty-state">No batch results yet.</td>
                 </tr>
               </tbody>
             </table>
@@ -241,7 +234,7 @@
           <div class="section-head">
             <div>
               <div class="eyebrow">Supported set</div>
-              <h2>Allowed conditions</h2>
+              <h2>Allowed ranges</h2>
             </div>
           </div>
           <div id="supportedConditions" class="supported-grid"></div>

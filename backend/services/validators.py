@@ -1,91 +1,73 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
+
 ROOT_DIR = Path(__file__).resolve().parents[2]
-BUNDLE_ROOT = ROOT_DIR / "roi_bundle"
-
-BUNDLE_LOAD_ERRORS: list[str] = []
-
-
-def _load_json(relative_path: str, default: Any) -> Any:
-    path = BUNDLE_ROOT / relative_path
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:  # noqa: BLE001
-        BUNDLE_LOAD_ERRORS.append(f"{relative_path}: {exc}")
-        return default
+MODEL_ROOT = ROOT_DIR / "Model"
+SURFACE_PATH = MODEL_ROOT / "mass_smooth_surface.npz"
 
 
-SUPPORTED_CONDITIONS = _load_json("metadata/supported_conditions.json", {})
-MODEL_SELECTION = _load_json("metadata/model_selection.json", {})
-BUNDLE_MANIFEST = _load_json("metadata/bundle_manifest.json", {"bundle_name": "unknown", "purpose": "unavailable", "output": {}})
-TIME_GRID = _load_json("metadata/time_grid.json", {"target_len": 1024, "grid_start_us": 0.0, "grid_end_us": 1.0})
-
-
-def normalize_injector_id(value: Any) -> str:
-    injector_id = str(value).strip()
-    if injector_id in SUPPORTED_CONDITIONS:
-        return injector_id
-    raise ValueError(f"Unsupported injector_id: {value!r}")
-
-
-def _is_exact_member(value: float, allowed_values: list[float]) -> bool:
-    for candidate in allowed_values:
-        if abs(float(value) - float(candidate)) <= 1e-9:
-            return True
-    return False
-
-
-def _is_within_range(value: float, allowed_values: list[float]) -> bool:
-    if not allowed_values:
-        return False
-    low = min(float(v) for v in allowed_values)
-    high = max(float(v) for v in allowed_values)
-    return low <= float(value) <= high
-
-
-def validate_condition(
-    injector_id: Any,
-    pressure_bar: float,
-    temp_c: float,
-    et_us: float,
-) -> dict[str, Any]:
-    injector_key = normalize_injector_id(injector_id)
-    catalog = SUPPORTED_CONDITIONS[injector_key]
-
-    errors: list[str] = []
-    if not _is_exact_member(float(pressure_bar), catalog["pressure_bar"]):
-        errors.append(f"pressure_bar {pressure_bar!r} is not supported for injector {injector_key}")
-    if not _is_exact_member(float(temp_c), catalog["temp_c"]):
-        errors.append(f"temp_c {temp_c!r} is not supported for injector {injector_key}")
-    if not _is_within_range(float(et_us), catalog["et_us"]):
-        errors.append(f"et_us {et_us!r} is outside the supported range for injector {injector_key}")
-
-    if errors:
-        raise ValueError("; ".join(errors))
-
+def _load_surface_metadata() -> dict[str, Any]:
+    surface = np.load(SURFACE_PATH, allow_pickle=True)
+    pressure_grid = [float(v) for v in np.asarray(surface["p_grid"]).reshape(-1)]
+    duration_grid = [float(v) for v in np.asarray(surface["d_grid"]).reshape(-1)]
+    pressure_range = [min(pressure_grid), max(pressure_grid)] if pressure_grid else [100.0, 350.0]
+    duration_range = [min(duration_grid), max(duration_grid)] if duration_grid else [250.0, 3000.0]
+    out_len = 7500
     return {
-        "injector_id": injector_key,
-        "pressure_bar": float(pressure_bar),
-        "temp_c": float(temp_c),
-        "et_us": float(et_us),
+        "bundle_name": "Model",
+        "model_kind": "pdnn",
+        "model_label": "ModelB PDNN",
+        "model_id": "best_model_ModelB",
+        "purpose": "Pressure-duration ROI inference bundle for injector 800 at 30C fixed context",
+        "fixed_context": {"injector_id": "800", "temp_c": 30.0},
+        "pressure_grid": pressure_grid,
+        "duration_grid": duration_grid,
+        "supported_pressure_range": pressure_range,
+        "supported_duration_range": duration_range,
+        "output": {"roi_unit": "mg/ms", "time_axis_unit": "us", "length": out_len},
+        "future_extension_note": "This first release is pressure-duration only. Injector geometry, additional temperature conditions, and hole-count-aware variants are reserved for future versions.",
+        "bundle_load_errors": [],
     }
 
 
+MODEL_METADATA = _load_surface_metadata()
+SUPPORTED_PRESSURE_RANGE = tuple(MODEL_METADATA["supported_pressure_range"])
+SUPPORTED_DURATION_RANGE = tuple(MODEL_METADATA["supported_duration_range"])
+
+
+def _within_range(value: float, bounds: tuple[float, float]) -> bool:
+    return float(bounds[0]) <= float(value) <= float(bounds[1])
+
+
+def validate_request(pressure_bar: float, duration_us: float) -> dict[str, Any]:
+    errors: list[str] = []
+    if not _within_range(float(pressure_bar), SUPPORTED_PRESSURE_RANGE):
+        errors.append(f"pressure_bar {pressure_bar!r} is outside the supported range")
+    if not _within_range(float(duration_us), SUPPORTED_DURATION_RANGE):
+        errors.append(f"duration_us {duration_us!r} is outside the supported range")
+    if errors:
+        raise ValueError("; ".join(errors))
+    return {"pressure_bar": float(pressure_bar), "duration_us": float(duration_us)}
+
+
 def supported_conditions_payload() -> dict[str, Any]:
-    output = BUNDLE_MANIFEST.get("output", {})
     return {
-        "bundle_name": BUNDLE_MANIFEST["bundle_name"],
-        "purpose": BUNDLE_MANIFEST["purpose"],
-        "time_axis_unit": output.get("time_axis_unit", "us"),
-        "roi_unit": output.get("roi_unit", "mg/ms"),
-        "time_axis_length": output.get("length", TIME_GRID.get("target_len", 1024)),
-        "selected_models": MODEL_SELECTION,
-        "supported_conditions": SUPPORTED_CONDITIONS,
-        "time_grid": TIME_GRID,
-        "geometry_extension_note": "Condition-only v1; geometry-aware inputs such as injector hole count are reserved for future versions.",
-        "bundle_load_errors": BUNDLE_LOAD_ERRORS,
+        "bundle_name": MODEL_METADATA["bundle_name"],
+        "purpose": MODEL_METADATA["purpose"],
+        "fixed_context": MODEL_METADATA["fixed_context"],
+        "supported_pressure_range_bar": list(SUPPORTED_PRESSURE_RANGE),
+        "supported_duration_range_us": list(SUPPORTED_DURATION_RANGE),
+        "pressure_grid": MODEL_METADATA["pressure_grid"],
+        "duration_grid": MODEL_METADATA["duration_grid"],
+        "output": MODEL_METADATA["output"],
+        "future_extension_note": MODEL_METADATA["future_extension_note"],
+        "bundle_load_errors": MODEL_METADATA["bundle_load_errors"],
+        "model_kind": MODEL_METADATA["model_kind"],
+        "model_label": MODEL_METADATA["model_label"],
+        "model_id": MODEL_METADATA["model_id"],
     }

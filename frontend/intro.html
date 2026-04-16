@@ -33,9 +33,9 @@
       <section class="landing-hero">
         <div class="landing-copy">
           <div class="eyebrow">ROI waveform predictor</div>
-          <h1>Predict the full ROI waveform from operating conditions.</h1>
+          <h1>Predict the full ROI waveform from pressure and duration.</h1>
           <p>
-            This site wraps the ROI runtime bundle into a simple web workflow: choose an injector, set the condition, and inspect the predicted waveform with summary metrics.
+            This first release uses a fixed experimental context: injector 800 at 30 C. The user enters rail pressure and injection duration, and the runtime returns the full ROI waveform with summary metrics.
           </p>
           <div class="landing-actions">
             <a class="primary-link" href="index.html">Open Program</a>
@@ -47,13 +47,13 @@
             <div class="flow-step">
               <span>1</span>
               <strong>Inputs</strong>
-              <p>Injector id, pressure, fuel temperature, energizing time.</p>
+              <p>Rail pressure and injection duration only.</p>
             </div>
             <div class="flow-arrow">→</div>
             <div class="flow-step accent">
               <span>2</span>
               <strong>Runtime</strong>
-              <p>Validated against the supported condition grid and routed into the bundled model.</p>
+              <p>Validated against the supported pressure and duration range for the fixed 800 / 30 C context.</p>
             </div>
             <div class="flow-arrow">→</div>
             <div class="flow-step">
@@ -69,19 +69,19 @@
         <article class="info-block">
           <h2>What this site is</h2>
           <p>
-            A deployment-friendly ROI webapp with the same structural interaction pattern as the plume site: top tabs, a left control rail, and a right workspace for plots and tables.
+            A deployment-friendly ROI webapp with the same interaction pattern as the plume site: top tabs, a left control rail, and a right workspace for plots and tables.
           </p>
         </article>
         <article class="info-block">
           <h2>What this site is not</h2>
           <p>
-            It is not a plume-physics application and it does not use geometry-driven collapse logic. The first release is condition-only.
+            It is not a geometry-driven injector tool in this release. Injector hole count, hole pattern, and other geometry-aware fields are reserved for later versions.
           </p>
         </article>
         <article class="info-block">
           <h2>Future extension</h2>
           <p>
-            The interface is designed so geometry-aware inputs such as injector hole count can be added later without changing the overall site structure.
+            The site shell is intentionally kept reusable so later ROI versions can add more operating conditions or geometry-aware inputs without changing the overall layout.
           </p>
         </article>
       </section>
