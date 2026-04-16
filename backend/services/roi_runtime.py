@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from .validators import BUNDLE_ROOT, MODEL_SELECTION, SUPPORTED_CONDITIONS, TIME_GRID, validate_condition
+from .validators import BUNDLE_MANIFEST, BUNDLE_ROOT, BUNDLE_LOAD_ERRORS, MODEL_SELECTION, SUPPORTED_CONDITIONS, TIME_GRID, validate_condition
 
 BUNDLE_CODE = BUNDLE_ROOT / "code"
 if str(BUNDLE_CODE) not in sys.path:
@@ -48,9 +48,10 @@ class RoiRuntime:
     def health_payload(self) -> dict[str, Any]:
         return {
             "status": "ok",
-            "bundle_name": json.loads((self.bundle_root / "metadata" / "bundle_manifest.json").read_text(encoding="utf-8"))["bundle_name"],
+            "bundle_name": BUNDLE_MANIFEST.get("bundle_name", "unknown"),
             "loaded_models": sorted(self._cache.keys()),
             "supported_injectors": sorted(self.model_selection.keys()),
+            "bundle_load_errors": BUNDLE_LOAD_ERRORS,
         }
 
     def get_supported_conditions_payload(self) -> dict[str, Any]:

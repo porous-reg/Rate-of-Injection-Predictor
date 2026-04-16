@@ -7,10 +7,22 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BUNDLE_ROOT = ROOT_DIR / "roi_bundle"
 
-SUPPORTED_CONDITIONS = json.loads((BUNDLE_ROOT / "metadata" / "supported_conditions.json").read_text(encoding="utf-8"))
-MODEL_SELECTION = json.loads((BUNDLE_ROOT / "metadata" / "model_selection.json").read_text(encoding="utf-8"))
-BUNDLE_MANIFEST = json.loads((BUNDLE_ROOT / "metadata" / "bundle_manifest.json").read_text(encoding="utf-8"))
-TIME_GRID = json.loads((BUNDLE_ROOT / "metadata" / "time_grid.json").read_text(encoding="utf-8"))
+BUNDLE_LOAD_ERRORS: list[str] = []
+
+
+def _load_json(relative_path: str, default: Any) -> Any:
+    path = BUNDLE_ROOT / relative_path
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        BUNDLE_LOAD_ERRORS.append(f"{relative_path}: {exc}")
+        return default
+
+
+SUPPORTED_CONDITIONS = _load_json("metadata/supported_conditions.json", {})
+MODEL_SELECTION = _load_json("metadata/model_selection.json", {})
+BUNDLE_MANIFEST = _load_json("metadata/bundle_manifest.json", {"bundle_name": "unknown", "purpose": "unavailable", "output": {}})
+TIME_GRID = _load_json("metadata/time_grid.json", {"target_len": 1024, "grid_start_us": 0.0, "grid_end_us": 1.0})
 
 
 def normalize_injector_id(value: Any) -> str:
@@ -56,15 +68,16 @@ def validate_condition(
 
 
 def supported_conditions_payload() -> dict[str, Any]:
+    output = BUNDLE_MANIFEST.get("output", {})
     return {
         "bundle_name": BUNDLE_MANIFEST["bundle_name"],
         "purpose": BUNDLE_MANIFEST["purpose"],
-        "time_axis_unit": BUNDLE_MANIFEST["output"]["time_axis_unit"],
-        "roi_unit": BUNDLE_MANIFEST["output"]["roi_unit"],
-        "time_axis_length": BUNDLE_MANIFEST["output"]["length"],
+        "time_axis_unit": output.get("time_axis_unit", "us"),
+        "roi_unit": output.get("roi_unit", "mg/ms"),
+        "time_axis_length": output.get("length", TIME_GRID.get("target_len", 1024)),
         "selected_models": MODEL_SELECTION,
         "supported_conditions": SUPPORTED_CONDITIONS,
         "time_grid": TIME_GRID,
         "geometry_extension_note": "Condition-only v1; geometry-aware inputs such as injector hole count are reserved for future versions.",
+        "bundle_load_errors": BUNDLE_LOAD_ERRORS,
     }
-
