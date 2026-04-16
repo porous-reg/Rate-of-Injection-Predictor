@@ -35,3 +35,5 @@ Prepared for Render via `render.yaml`.
 The shell is intentionally reusable for later geometry-aware ROI variants, such as models that may also accept injector hole count or hole pattern metadata.
 
 If you host the frontend on Cloudflare Pages, point the Program page at the backend URL using the new Backend URL field, the `?api=` query parameter, or the `roiApiBase` localStorage key. Cloudflare Pages serves the static shell; the FastAPI backend must still run on a separate Python host.
+
+For a no-manual-entry setup on Cloudflare Pages, add a Pages Function at `functions/api/[[path]].ts` and set a Cloudflare Pages environment variable named `BACKEND_URL` to the Render service URL. The frontend can keep calling `/api/*` on the same origin, and the Pages Function will forward those requests to the Python backend.
