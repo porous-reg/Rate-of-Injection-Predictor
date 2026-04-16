@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 
 from .validators import BUNDLE_ROOT, MODEL_SELECTION, SUPPORTED_CONDITIONS, TIME_GRID, validate_condition
 
@@ -16,15 +15,13 @@ BUNDLE_CODE = BUNDLE_ROOT / "code"
 if str(BUNDLE_CODE) not in sys.path:
     sys.path.insert(0, str(BUNDLE_CODE))
 
-from model_defs import build_condition_model  # noqa: E402
-
 
 @dataclass
 class LoadedModel:
     injector_id: str
     paper_label: str
     code_model_id: str
-    model: torch.nn.Module
+    model: Any
     norm: dict[str, np.ndarray]
     seq_len: int
     checkpoint_dir: Path
@@ -73,6 +70,11 @@ class RoiRuntime:
         injector_id = str(injector_id)
         if injector_id in self._cache:
             return self._cache[injector_id]
+
+        import importlib
+
+        torch = importlib.import_module("torch")
+        from model_defs import build_condition_model  # noqa: WPS433, PLC0415
 
         meta = self.model_selection[injector_id]
         checkpoint_dir = self.bundle_root / "models" / f"inj{injector_id}" / meta["paper_label"]
@@ -125,6 +127,9 @@ class RoiRuntime:
         loaded = self._load_model(normalized["injector_id"])
         x = np.asarray([normalized["pressure_bar"], normalized["temp_c"], normalized["et_us"]], dtype=np.float32)
         x = (x - loaded.norm["x_mean"]) / np.maximum(loaded.norm["x_std"], 1e-6)
+        import importlib
+
+        torch = importlib.import_module("torch")
         x_t = torch.tensor(x, dtype=torch.float32).unsqueeze(0)
 
         with torch.inference_mode():
